@@ -285,8 +285,70 @@ async fn removeDownload(
 }
 
 #[tauri::command]
-fn checkForUpdate() -> Option<UpdateInfo> {
-    None
+async fn checkForUpdate(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> CommandResult<Option<UpdateInfo>> {
+    let url = "https://api.github.com/repos/draigar/flexo/releases/latest";
+    let client = reqwest::Client::builder()
+        .user_agent("Flexo App")
+        .build()
+        .map_err(error_string)?;
+
+    if let Ok(response) = client.get(url).send().await {
+        if let Ok(release) = response.json::<serde_json::Value>().await {
+            if let Some(tag_name) = release.get("tag_name").and_then(|v| v.as_str()) {
+                let latest_version = tag_name.trim_start_matches('v');
+                let current_version = app.package_info().version.to_string();
+
+                if latest_version != current_version {
+                    let dismissed = state
+                        .settings
+                        .read()
+                        .dismissed_update_version
+                        .as_deref()
+                        == Some(latest_version);
+
+                    let mut download_url = release
+                        .get("html_url")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("https://github.com/draigar/flexo/releases/latest")
+                        .to_string();
+
+                    if let Some(assets) = release.get("assets").and_then(|v| v.as_array()) {
+                        let os = std::env::consts::OS;
+                        let ext = match os {
+                            "macos" => ".dmg",
+                            "windows" => ".exe",
+                            "linux" => ".AppImage",
+                            _ => "",
+                        };
+                        
+                        for asset in assets {
+                            if let Some(name) = asset.get("name").and_then(|v| v.as_str()) {
+                                if !ext.is_empty() && name.ends_with(ext) {
+                                    if let Some(browser_download_url) = asset
+                                        .get("browser_download_url")
+                                        .and_then(|v| v.as_str())
+                                    {
+                                        download_url = browser_download_url.to_string();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    return Ok(Some(UpdateInfo {
+                        version: latest_version.to_string(),
+                        url: download_url,
+                        dismissed,
+                    }));
+                }
+            }
+        }
+    }
+    Ok(None)
 }
 
 #[tauri::command]

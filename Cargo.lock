@@ -9,6 +9,7 @@ dependencies = [
  "dirs",
  "flexo-engine",
  "parking_lot",
+ "reqwest 0.12.28",
  "rfd",
  "rusqlite",
  "serde",
