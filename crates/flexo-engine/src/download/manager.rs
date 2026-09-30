@@ -223,7 +223,15 @@ impl DownloadManager {
     }
 
     pub fn get_active(&self) -> Vec<DownloadState> {
-        self.inner.active.read().values().cloned().collect()
+        self.inner
+            .active
+            .read()
+            .values()
+            .filter(|s| {
+                s.status != DownloadStatus::Completed && s.status != DownloadStatus::Cancelled
+            })
+            .cloned()
+            .collect()
     }
 
     pub fn list_queue(&self) -> Vec<QueueItem> {

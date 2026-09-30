@@ -1,14 +1,5 @@
 import type { DownloadState } from '@shared/types'
-import {
-  AlertCircle,
-  ArrowDownToLine,
-  CheckCircle2,
-  ChevronRight,
-  Pause,
-  Play,
-  Plus,
-  Trash2
-} from 'lucide-react'
+import { AlertCircle, ArrowDownToLine, ChevronRight, Pause, Play, Plus, Trash2 } from 'lucide-react'
 import { PageFrame } from '../components/PageFrame'
 import { Button } from '../components/ui/button'
 import { useAppStore } from '../store/useAppStore'
@@ -25,7 +16,9 @@ export function OngoingDownloadsScreen(): React.JSX.Element {
   const setPage = useAppStore((store) => store.setPage)
   const setFocusedDownloadId = useAppStore((store) => store.setFocusedDownloadId)
 
-  const downloadsList = Object.values(activeDownloads)
+  const downloadsList = Object.values(activeDownloads).filter(
+    (d) => d.status !== 'completed' && d.status !== 'cancelled'
+  )
 
   const handleSelectDownload = (id: string): void => {
     setFocusedDownloadId(id)
@@ -49,6 +42,7 @@ export function OngoingDownloadsScreen(): React.JSX.Element {
 
   const handleNewDownload = (): void => {
     setFocusedDownloadId(null)
+    useAppStore.getState().setDraftUrl('')
     setPage('home')
   }
 
@@ -102,7 +96,6 @@ export function OngoingDownloadsScreen(): React.JSX.Element {
               const isPaused = download.status === 'paused'
               const isError = download.status === 'error'
               const isAssembling = download.status === 'assembling'
-              const isCompleted = download.status === 'completed'
 
               return (
                 <div
@@ -139,12 +132,6 @@ export function OngoingDownloadsScreen(): React.JSX.Element {
                             Assembling…
                           </span>
                         )}
-                        {isCompleted && (
-                          <span className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[9.5px] font-medium text-[var(--color-success)] bg-[var(--color-success-bg)] border border-[var(--color-success-border)]">
-                            <CheckCircle2 size={10} />
-                            Complete
-                          </span>
-                        )}
                       </div>
 
                       <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
@@ -177,8 +164,11 @@ export function OngoingDownloadsScreen(): React.JSX.Element {
                     </div>
 
                     {/* Quick Action Controls */}
-                    <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      {!isCompleted && !isAssembling && (
+                    <div
+                      className="flex items-center gap-1.5 shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {!isAssembling && (
                         <Button
                           type="button"
                           variant={isPaused || isError ? 'default' : 'secondary'}
@@ -221,9 +211,7 @@ export function OngoingDownloadsScreen(): React.JSX.Element {
                           ? 'bg-destructive'
                           : isPaused
                             ? 'bg-[var(--color-usb)]'
-                            : isCompleted
-                              ? 'bg-[var(--color-success)]'
-                              : 'bg-primary'
+                            : 'bg-primary'
                       }`}
                       style={{ width: `${percent}%` }}
                     />

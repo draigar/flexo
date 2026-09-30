@@ -101,6 +101,12 @@ export function SettingsScreen(): React.JSX.Element {
           >
             <OnOff on={watchClipboard} label="Clipboard links" onChange={setWatchClipboard} />
           </SettingRow>
+          <SettingRow
+            title="Background persistence"
+            detail="Closing the window keeps Flexo running in the menu bar / system tray so downloads continue and the browser extension can reach it."
+          >
+            <span className="font-mono text-[10px] text-muted-foreground uppercase">Always on</span>
+          </SettingRow>
         </section>
 
         <section className="flex flex-col gap-2">
@@ -211,7 +217,7 @@ export function SettingsScreen(): React.JSX.Element {
           <h2 className={sectionLabelClass}>Browser</h2>
           <SettingRow
             title="Capture extension"
-            detail="Load this folder in Chrome or Edge with Developer mode, then Load unpacked. Reload it after an update."
+            detail="Load this folder in Chrome or Edge (developer mode) or Firefox. Once installed, Flexo auto-registers as the Native Messaging host on launch."
           >
             <Button
               type="button"

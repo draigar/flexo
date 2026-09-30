@@ -1,7 +1,7 @@
 import { PRESET_SEGMENT_MB, PRESET_STREAMS, planDownload, segmentPresetToBytes } from '@shared/plan'
 import type { MediaCandidate, ProbeResult, SegmentPreset } from '@shared/types'
 import { cn } from 'cn'
-import { AlertTriangle, ClipboardPaste, Film, Info, Plus } from 'lucide-react'
+import { AlertTriangle, ClipboardPaste, Film, Info, Plus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { MediaCandidateSheet } from '../components/MediaCandidateSheet'
 import { NetworkCard } from '../components/NetworkCard'
@@ -230,10 +230,12 @@ export function IdleScreen(): React.JSX.Element {
     try {
       if (enqueue) {
         await window.flexo.enqueueDownload(request)
+        setUrl('')
       } else {
         const id = await window.flexo.startDownload(request)
         if (id) {
           useAppStore.getState().setFocusedDownloadId(id)
+          useAppStore.getState().setDraftUrl('')
         }
       }
     } catch (error) {
@@ -285,6 +287,7 @@ export function IdleScreen(): React.JSX.Element {
       })
       if (id) {
         useAppStore.getState().setFocusedDownloadId(id)
+        useAppStore.getState().setDraftUrl('')
       }
       useAppStore.getState().clearMediaCandidates()
     } catch (error) {
@@ -316,6 +319,17 @@ export function IdleScreen(): React.JSX.Element {
               aria-labelledby="idle-link-label"
               className="min-w-0 flex-1 rounded-[3px] border-none bg-transparent font-mono text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             />
+            {url.trim().length > 0 && (
+              <button
+                type="button"
+                onClick={() => setUrl('')}
+                className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
+                title="Clear link"
+                aria-label="Clear link"
+              >
+                <X size={13} />
+              </button>
+            )}
             <Button
               type="button"
               variant="secondary"

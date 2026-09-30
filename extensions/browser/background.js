@@ -1,8 +1,43 @@
+const NM_HOST = 'com.flexo.app'
 const FLEXO_CAPTURE = 'http://127.0.0.1:17890/capture'
 const FLEXO_MEDIA = 'http://127.0.0.1:17890/media'
 
 const MEDIA_HINT = /\.(mp4|webm|m4v|mov|m3u8|mpd)(\?|$)/i
 const DOWNLOAD_URL = /^(https?:|magnet:)/i
+
+async function sendViaNativeMessaging(body) {
+  return new Promise((resolve) => {
+    try {
+      if (!chrome.runtime.connectNative) {
+        resolve(false)
+        return
+      }
+      const port = chrome.runtime.connectNative(NM_HOST)
+      let resolved = false
+
+      port.onMessage.addListener((msg) => {
+        if (!resolved) {
+          resolved = true
+          resolve(!!msg?.ok)
+          try {
+            port.disconnect()
+          } catch {}
+        }
+      })
+
+      port.onDisconnect.addListener(() => {
+        if (!resolved) {
+          resolved = true
+          resolve(false)
+        }
+      })
+
+      port.postMessage(body)
+    } catch {
+      resolve(false)
+    }
+  })
+}
 
 async function postJson(url, body) {
   try {
@@ -47,11 +82,21 @@ async function takeDownload(item) {
   const url = item.finalUrl || item.url
   if (!url || url.startsWith('blob:') || url.startsWith('data:') || !DOWNLOAD_URL.test(url)) return
   const body = captureBody({ ...item, url })
-  const accepted = await postJson(FLEXO_CAPTURE, body)
+
+  // 1. Try Native Messaging first (auto-registered host)
+  let accepted = await sendViaNativeMessaging(body)
+
+  // 2. Fall back to local HTTP TCP handoff server
+  if (!accepted) {
+    accepted = await postJson(FLEXO_CAPTURE, body)
+  }
+
+  // 3. Fall back to deep link (launches Flexo if not running)
   if (!accepted) {
     await launchFlexo(body)
     return
   }
+
   try {
     await chrome.downloads.cancel(item.id)
   } catch {
@@ -71,7 +116,7 @@ chrome.downloads.onCreated.addListener((item) => {
 chrome.webRequest.onCompleted.addListener(
   (details) => {
     if (details.type !== 'media' && !MEDIA_HINT.test(details.url)) return
-    void postJson(FLEXO_MEDIA, {
+    const body = {
       candidates: [
         {
           id: `${Date.now()}-${details.requestId}`,
@@ -87,7 +132,11 @@ chrome.webRequest.onCompleted.addListener(
           drm: false
         }
       ]
-    })
+    }
+    void (async () => {
+      let accepted = await sendViaNativeMessaging(body)
+      if (!accepted) void postJson(FLEXO_MEDIA, body)
+    })()
   },
   { urls: ['<all_urls>'] },
   ['responseHeaders']
@@ -95,9 +144,10 @@ chrome.webRequest.onCompleted.addListener(
 
 chrome.action.onClicked.addListener((tab) => {
   if (!tab?.url || !DOWNLOAD_URL.test(tab.url)) return
-  void postJson(FLEXO_CAPTURE, { url: tab.url, fileName: tab.title || undefined }).then(
-    (accepted) => {
-      if (!accepted) void launchFlexo({ url: tab.url, fileName: tab.title || undefined })
-    }
-  )
+  const body = { url: tab.url, fileName: tab.title || undefined }
+  void (async () => {
+    let accepted = await sendViaNativeMessaging(body)
+    if (!accepted) accepted = await postJson(FLEXO_CAPTURE, body)
+    if (!accepted) void launchFlexo(body)
+  })()
 })

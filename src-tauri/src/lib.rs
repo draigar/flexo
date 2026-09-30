@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 
 mod history;
+mod native_messaging;
 
 use flexo_engine::plan::{plan_download, resolve_auto_block_bytes, PlanRequest};
 use flexo_engine::{
@@ -10,7 +11,11 @@ use flexo_engine::{
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Emitter, Manager, State,
+};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_opener::OpenerExt;
@@ -827,8 +832,124 @@ fn find_header_end(bytes: &[u8]) -> Option<usize> {
     bytes.windows(4).position(|window| window == b"\r\n\r\n")
 }
 
+fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let show = MenuItem::with_id(app, "show", "Open Flexo", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Flexo", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &quit])?;
+
+    let mut builder = TrayIconBuilder::new()
+        .menu(&menu)
+        .tooltip("Flexo")
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => present_main_window(app),
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                present_main_window(tray.app_handle());
+            }
+        });
+
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+
+    builder.build(app)?;
+    Ok(())
+}
+
+pub fn run_native_messaging() {
+    use std::io::{Read, Write};
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+    let mut stdin = stdin.lock();
+    let mut stdout = stdout.lock();
+
+    loop {
+        let mut len_buf = [0u8; 4];
+        if stdin.read_exact(&mut len_buf).is_err() {
+            break;
+        }
+        let len = u32::from_ne_bytes(len_buf) as usize;
+        if len == 0 || len > 10 * 1024 * 1024 {
+            break;
+        }
+
+        let mut body = vec![0u8; len];
+        if stdin.read_exact(&mut body).is_err() {
+            break;
+        }
+
+        let response = forward_to_handoff(&body);
+
+        let resp_bytes = response.as_bytes();
+        let resp_len = (resp_bytes.len() as u32).to_ne_bytes();
+        if stdout.write_all(&resp_len).is_err() {
+            break;
+        }
+        if stdout.write_all(resp_bytes).is_err() {
+            break;
+        }
+        let _ = stdout.flush();
+    }
+}
+
+fn forward_to_handoff(body: &[u8]) -> String {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+
+    let Ok(mut stream) = TcpStream::connect("127.0.0.1:17890") else {
+        return r#"{"ok":false,"error":"Flexo is not running"}"#.to_owned();
+    };
+
+    let is_media = serde_json::from_slice::<serde_json::Value>(body)
+        .ok()
+        .and_then(|val| val.get("candidates").cloned())
+        .is_some();
+    let path = if is_media { "/media" } else { "/capture" };
+
+    let request = format!(
+        "POST {} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        path,
+        body.len()
+    );
+    if stream.write_all(request.as_bytes()).is_err() {
+        return r#"{"ok":false,"error":"failed to write request"}"#.to_owned();
+    }
+    if stream.write_all(body).is_err() {
+        return r#"{"ok":false,"error":"failed to write body"}"#.to_owned();
+    }
+    let _ = stream.flush();
+
+    let mut response = String::new();
+    let _ = stream.read_to_string(&mut response);
+
+    if let Some((_, json_body)) = response.split_once("\r\n\r\n") {
+        let trimmed = json_body.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_owned();
+        }
+    }
+    r#"{"ok":true}"#.to_owned()
+}
+
 pub fn run() {
     tauri::Builder::default()
+        .on_window_event(|window, event| {
+            if window.label() == "main" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
@@ -887,6 +1008,8 @@ pub fn run() {
                     }
                 }
             }
+            setup_tray(app)?;
+            native_messaging::register_browser_integrations(app.handle());
             spawn_clipboard_watcher(app.handle().clone());
             spawn_handoff_server(app.handle().clone());
             Ok(())

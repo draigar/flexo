@@ -107,6 +107,7 @@ function App(): React.JSX.Element {
       }
     }
     setFocusedDownloadId(null)
+    useAppStore.getState().setDraftUrl('')
     useAppStore.getState().setPage('home')
   }
 
@@ -125,7 +126,7 @@ function App(): React.JSX.Element {
   }
 
   const focusedDownload = focusedDownloadId
-    ? activeDownloads[focusedDownloadId] ?? currentDownload
+    ? (activeDownloads[focusedDownloadId] ?? currentDownload)
     : null
 
   const noConnections = interfacesStatus === 'ready' && interfaces.length === 0

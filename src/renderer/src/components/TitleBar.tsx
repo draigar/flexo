@@ -121,6 +121,7 @@ export function TitleBar({ status }: { status: TitleBarStatus }): React.JSX.Elem
           aria-label="New Download"
           onClick={() => {
             setFocusedDownloadId(null)
+            useAppStore.getState().setDraftUrl('')
             setPage('home')
           }}
           className={`${navButtonClass} border-border bg-secondary text-[var(--text-secondary)] hover:text-foreground hover:border-primary/50 transition-colors`}

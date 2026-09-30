@@ -224,7 +224,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       map[d.id] = d
     }
     const focusedId = get().focusedDownloadId
-    const current = focusedId ? map[focusedId] ?? null : null
+    const current = focusedId ? (map[focusedId] ?? null) : null
     set({
       activeDownloads: map,
       currentDownload: current
@@ -300,7 +300,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       currentDownload: null,
       speedHistory: [],
       speedHistoryByInterface: {},
-      peakSpeedBytesPerSec: 0
+      peakSpeedBytesPerSec: 0,
+      draftUrl: ''
     })
   },
 
