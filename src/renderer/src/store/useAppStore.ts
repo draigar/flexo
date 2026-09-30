@@ -32,7 +32,7 @@ interface AppStore {
   segmentPreset: SegmentPreset
   autoDownload: boolean
   watchClipboard: boolean
-  page: 'home' | 'settings' | 'library'
+  page: 'home' | 'settings' | 'library' | 'ongoing'
 
   availableUpdate: UpdateInfo | null
 
@@ -40,6 +40,8 @@ interface AppStore {
   downloadsDir: string
   isDev: boolean
 
+  activeDownloads: Record<string, DownloadState>
+  focusedDownloadId: string | null
   currentDownload: DownloadState | null
   queue: QueueItem[]
   mediaCandidates: MediaCandidate[]
@@ -60,7 +62,10 @@ interface AppStore {
   setSegmentPreset: (segmentPreset: SegmentPreset) => void
   setAutoDownload: (autoDownload: boolean) => void
   setWatchClipboard: (watchClipboard: boolean) => void
-  setPage: (page: 'home' | 'settings' | 'library') => void
+  setPage: (page: 'home' | 'settings' | 'library' | 'ongoing') => void
+  setFocusedDownloadId: (id: string | null) => void
+  setActiveDownloads: (downloads: DownloadState[]) => void
+  removeActiveDownload: (id: string) => void
   checkForUpdate: () => Promise<void>
   dismissUpdate: () => void
   setCurrentDownload: (state: DownloadState) => void
@@ -98,6 +103,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   downloadsDir: initial.downloadsDir,
   isDev: initial.isDev,
 
+  activeDownloads: {},
+  focusedDownloadId: null,
   currentDownload: null,
   queue: [],
   mediaCandidates: [],
@@ -189,16 +196,69 @@ export const useAppStore = create<AppStore>((set, get) => ({
     persist({ dismissedUpdateVersion: update.version })
   },
 
+  setFocusedDownloadId: (id) => {
+    lastSpeedSampleAt = 0
+    if (!id) {
+      set({
+        focusedDownloadId: null,
+        currentDownload: null,
+        speedHistory: [],
+        speedHistoryByInterface: {},
+        peakSpeedBytesPerSec: 0
+      })
+      return
+    }
+    const download = get().activeDownloads[id] ?? null
+    set({
+      focusedDownloadId: id,
+      currentDownload: download,
+      speedHistory: [],
+      speedHistoryByInterface: {},
+      peakSpeedBytesPerSec: download?.speedBytesPerSec ?? 0
+    })
+  },
+
+  setActiveDownloads: (downloads) => {
+    const map: Record<string, DownloadState> = {}
+    for (const d of downloads) {
+      map[d.id] = d
+    }
+    const focusedId = get().focusedDownloadId
+    const current = focusedId ? map[focusedId] ?? null : null
+    set({
+      activeDownloads: map,
+      currentDownload: current
+    })
+  },
+
+  removeActiveDownload: (id) => {
+    const next = { ...get().activeDownloads }
+    delete next[id]
+    const updates: Record<string, unknown> = { activeDownloads: next }
+    if (get().focusedDownloadId === id) {
+      updates.focusedDownloadId = null
+      updates.currentDownload = null
+      updates.speedHistory = []
+      updates.speedHistoryByInterface = {}
+      updates.peakSpeedBytesPerSec = 0
+    }
+    set(updates)
+  },
+
   setCurrentDownload: (download) => {
+    const activeDownloads = { ...get().activeDownloads, [download.id]: download }
+    const focusedDownloadId = get().focusedDownloadId
+
+    const isFocused = focusedDownloadId === download.id
     const previous = get().currentDownload
-    const isNewDownload = !previous || previous.id !== download.id
+    const isNewDownload = isFocused && (!previous || previous.id !== download.id)
 
     let speedHistory = isNewDownload ? [] : get().speedHistory
     let speedHistoryByInterface = isNewDownload ? {} : get().speedHistoryByInterface
     let peakSpeedBytesPerSec = isNewDownload ? 0 : get().peakSpeedBytesPerSec
     if (isNewDownload) lastSpeedSampleAt = 0
 
-    if (download.status === 'downloading') {
+    if (isFocused && download.status === 'downloading') {
       peakSpeedBytesPerSec = Math.max(peakSpeedBytesPerSec, download.speedBytesPerSec)
 
       const now = Date.now()
@@ -218,21 +278,31 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
 
     set({
-      currentDownload: download,
-      speedHistory,
-      speedHistoryByInterface,
-      peakSpeedBytesPerSec,
+      activeDownloads,
+      focusedDownloadId,
+      currentDownload: isFocused ? download : get().currentDownload,
+      speedHistory: isFocused ? speedHistory : get().speedHistory,
+      speedHistoryByInterface: isFocused ? speedHistoryByInterface : get().speedHistoryByInterface,
+      peakSpeedBytesPerSec: isFocused ? peakSpeedBytesPerSec : get().peakSpeedBytesPerSec,
       captureError: download.status === 'downloading' ? null : get().captureError
     })
   },
 
-  clearCurrentDownload: () =>
+  clearCurrentDownload: () => {
+    const focusedId = get().focusedDownloadId
+    const next = { ...get().activeDownloads }
+    if (focusedId) {
+      delete next[focusedId]
+    }
     set({
+      activeDownloads: next,
+      focusedDownloadId: null,
       currentDownload: null,
       speedHistory: [],
       speedHistoryByInterface: {},
       peakSpeedBytesPerSec: 0
-    }),
+    })
+  },
 
   setDraftUrl: (draftUrl) => set({ draftUrl }),
   setCaptureError: (captureError) => set({ captureError }),

@@ -13,6 +13,7 @@ export const IpcChannels = {
   startDownload: 'download:start',
   startSimulatedDownload: 'download:start-simulated',
   getCurrentDownload: 'download:get-current',
+  getActiveDownloads: 'download:get-active',
   pauseDownload: 'download:pause',
   resumeDownload: 'download:resume',
   cancelDownload: 'download:cancel',

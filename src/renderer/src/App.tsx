@@ -13,6 +13,7 @@ import { ErrorScreen } from './screens/ErrorScreen'
 import { IdleScreen } from './screens/IdleScreen'
 import { LibraryScreen } from './screens/LibraryScreen'
 import { NoConnectionsScreen } from './screens/NoConnectionsScreen'
+import { OngoingDownloadsScreen } from './screens/OngoingDownloadsScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { useAppStore } from './store/useAppStore'
 import { ACTIVE_CONCEPT } from './theme'
@@ -77,8 +78,10 @@ function App(): React.JSX.Element {
 
   const interfaces = useAppStore((store) => store.interfaces)
   const interfacesStatus = useAppStore((store) => store.interfacesStatus)
+  const activeDownloads = useAppStore((store) => store.activeDownloads)
+  const focusedDownloadId = useAppStore((store) => store.focusedDownloadId)
+  const setFocusedDownloadId = useAppStore((store) => store.setFocusedDownloadId)
   const currentDownload = useAppStore((store) => store.currentDownload)
-  const clearCurrentDownload = useAppStore((store) => store.clearCurrentDownload)
   const checkForUpdate = useAppStore((store) => store.checkForUpdate)
   const themeSource = useAppStore((store) => store.themeSource)
   const captureError = useAppStore((store) => store.captureError)
@@ -94,23 +97,41 @@ function App(): React.JSX.Element {
   }, [checkForUpdate])
 
   const handleNewDownload = (): void => {
-    if (currentDownload) void window.flexo.removeDownload(currentDownload.id)
-    clearCurrentDownload()
+    if (focusedDownloadId) {
+      const active = activeDownloads[focusedDownloadId]
+      if (active?.status === 'completed') {
+        useAppStore.getState().removeActiveDownload(focusedDownloadId)
+      } else {
+        void window.flexo.removeDownload(focusedDownloadId)
+        useAppStore.getState().removeActiveDownload(focusedDownloadId)
+      }
+    }
+    setFocusedDownloadId(null)
+    useAppStore.getState().setPage('home')
   }
 
   const handleDownloadAgain = (): void => {
-    if (currentDownload) {
-      const url = currentDownload.url
-      void window.flexo.removeDownload(currentDownload.id)
-      clearCurrentDownload()
-      useAppStore.getState().setDraftUrl(url)
+    if (focusedDownloadId) {
+      const active = activeDownloads[focusedDownloadId]
+      if (active) {
+        const url = active.url
+        void window.flexo.removeDownload(active.id)
+        useAppStore.getState().removeActiveDownload(active.id)
+        setFocusedDownloadId(null)
+        useAppStore.getState().setPage('home')
+        useAppStore.getState().setDraftUrl(url)
+      }
     }
   }
 
+  const focusedDownload = focusedDownloadId
+    ? activeDownloads[focusedDownloadId] ?? currentDownload
+    : null
+
   const noConnections = interfacesStatus === 'ready' && interfaces.length === 0
 
-  const downloadView = currentDownload
-    ? renderDownload(currentDownload, {
+  const downloadView = focusedDownload
+    ? renderDownload(focusedDownload, {
         onNewDownload: handleNewDownload,
         onDownloadAgain: handleDownloadAgain
       })
@@ -123,6 +144,8 @@ function App(): React.JSX.Element {
     screen = <SettingsScreen />
   } else if (page === 'library') {
     screen = <LibraryScreen />
+  } else if (page === 'ongoing') {
+    screen = <OngoingDownloadsScreen />
   } else if (downloadView) {
     screen = downloadView.screen
   } else if (noConnections) {

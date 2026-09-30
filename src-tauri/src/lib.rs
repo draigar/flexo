@@ -259,6 +259,11 @@ async fn getCurrentDownload(state: State<'_, AppState>) -> CommandResult<Option<
 }
 
 #[tauri::command]
+async fn getActiveDownloads(state: State<'_, AppState>) -> CommandResult<Vec<DownloadState>> {
+    Ok(state.engine.get_active().await)
+}
+
+#[tauri::command]
 async fn pauseDownload(state: State<'_, AppState>, payload: String) -> CommandResult<()> {
     state.engine.pause(payload).await.map_err(error_string)
 }
@@ -903,6 +908,7 @@ pub fn run() {
             startDownload,
             startSimulatedDownload,
             getCurrentDownload,
+            getActiveDownloads,
             pauseDownload,
             resumeDownload,
             cancelDownload,

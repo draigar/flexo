@@ -23,9 +23,11 @@ export function useDownloadEvents(): void {
     const unsubMedia = window.flexo.onMediaCandidates(setMediaCandidates)
 
     void window.flexo
-      .getCurrentDownload()
-      .then((download) => {
-        if (!disposed && download) setCurrentDownload(download)
+      .getActiveDownloads()
+      .then((downloads) => {
+        if (!disposed && downloads) {
+          downloads.forEach(setCurrentDownload)
+        }
       })
       .catch(() => {})
 

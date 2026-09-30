@@ -1,4 +1,4 @@
-import { FolderOpen, Settings } from 'lucide-react'
+import { ArrowDownToLine, FolderOpen, Plus, Settings } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { ColorBadge } from './ColorBadge'
 import { ThemeToggle } from './ThemeToggle'
@@ -29,6 +29,17 @@ export function TitleBar({ status }: { status: TitleBarStatus }): React.JSX.Elem
   const dimmed = status.kind === 'offline'
   const page = useAppStore((store) => store.page)
   const setPage = useAppStore((store) => store.setPage)
+  const activeDownloads = useAppStore((store) => store.activeDownloads)
+  const focusedDownloadId = useAppStore((store) => store.focusedDownloadId)
+  const setFocusedDownloadId = useAppStore((store) => store.setFocusedDownloadId)
+
+  const ongoingCount = Object.values(activeDownloads).filter(
+    (d) =>
+      d.status === 'downloading' ||
+      d.status === 'assembling' ||
+      d.status === 'paused' ||
+      d.status === 'error'
+  ).length
 
   return (
     <div
@@ -101,6 +112,41 @@ export function TitleBar({ status }: { status: TitleBarStatus }): React.JSX.Elem
           <div className={`${pillDotClass} bg-destructive`} />
           Offline
         </ColorBadge>
+      )}
+
+      {(ongoingCount > 0 || focusedDownloadId !== null || page === 'ongoing') && (
+        <button
+          type="button"
+          title="New Download"
+          aria-label="New Download"
+          onClick={() => {
+            setFocusedDownloadId(null)
+            setPage('home')
+          }}
+          className={`${navButtonClass} border-border bg-secondary text-[var(--text-secondary)] hover:text-foreground hover:border-primary/50 transition-colors`}
+        >
+          <Plus size={14} />
+        </button>
+      )}
+
+      {ongoingCount > 0 && (
+        <button
+          type="button"
+          title="Ongoing Downloads"
+          aria-label="Ongoing Downloads"
+          aria-pressed={page === 'ongoing'}
+          onClick={() => setPage(page === 'ongoing' ? 'home' : 'ongoing')}
+          className={`relative ${navButtonClass} ${
+            page === 'ongoing'
+              ? 'border-primary bg-primary text-primary-foreground'
+              : 'border-border bg-secondary text-[var(--text-secondary)]'
+          }`}
+        >
+          <ArrowDownToLine size={14} />
+          <span className="absolute -top-1 -right-1 flex size-3.5 items-center justify-center rounded-full bg-primary font-mono text-[9px] font-bold text-primary-foreground ring-2 ring-card animate-pulse">
+            {ongoingCount}
+          </span>
+        </button>
       )}
 
       <button

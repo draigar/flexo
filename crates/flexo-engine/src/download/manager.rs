@@ -9,10 +9,7 @@ use std::{
     collections::{HashMap, VecDeque},
     net::IpAddr,
     path::{Path, PathBuf},
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::Arc,
 };
 use tokio::{fs, sync::broadcast};
 use tokio_util::sync::CancellationToken;
@@ -35,11 +32,11 @@ struct SpeedRuntime {
 
 struct Inner {
     data_dir: PathBuf,
-    current: RwLock<Option<DownloadState>>,
+    active: RwLock<HashMap<String, DownloadState>>,
     queue: Mutex<VecDeque<QueueItem>>,
     requests: Mutex<HashMap<String, StartDownloadRequest>>,
-    cancel: Mutex<Option<CancellationToken>>,
-    speed: Mutex<SpeedRuntime>,
+    cancels: Mutex<HashMap<String, CancellationToken>>,
+    speeds: Mutex<HashMap<String, SpeedRuntime>>,
     updates: broadcast::Sender<DownloadState>,
     on_update: UpdateCallback,
 }
@@ -55,11 +52,11 @@ impl DownloadManager {
         Self {
             inner: Arc::new(Inner {
                 data_dir,
-                current: RwLock::new(None),
+                active: RwLock::new(HashMap::new()),
                 queue: Mutex::new(VecDeque::new()),
                 requests: Mutex::new(HashMap::new()),
-                cancel: Mutex::new(None),
-                speed: Mutex::new(SpeedRuntime::default()),
+                cancels: Mutex::new(HashMap::new()),
+                speeds: Mutex::new(HashMap::new()),
                 updates,
                 on_update,
             }),
@@ -82,13 +79,7 @@ impl DownloadManager {
         UrlCheck::validate(&req.url)?;
         let id = Uuid::new_v4().to_string();
         self.inner.requests.lock().insert(id.clone(), req.clone());
-        let busy = self.inner.current.read().as_ref().is_some_and(|s| {
-            matches!(
-                s.status,
-                DownloadStatus::Downloading | DownloadStatus::Assembling | DownloadStatus::Paused
-            )
-        });
-        if busy || force_queue {
+        if force_queue {
             self.inner.queue.lock().push_back(QueueItem {
                 id: id.clone(),
                 url: req.url.clone(),
@@ -98,9 +89,6 @@ impl DownloadManager {
                 request: req,
             });
             self.persist_manifest().await?;
-            if !busy {
-                self.start_next();
-            }
         } else {
             self.launch(id.clone(), req, None);
         }
@@ -111,8 +99,8 @@ impl DownloadManager {
         let inner = self.inner.clone();
         tokio::spawn(async move {
             if let Err(error) = run_job(inner.clone(), id.clone(), req, destination).await {
-                let mut state = inner.current.write();
-                if let Some(current) = state.as_mut().filter(|state| state.id == id) {
+                let mut active = inner.active.write();
+                if let Some(current) = active.get_mut(&id) {
                     if !matches!(
                         current.status,
                         DownloadStatus::Paused | DownloadStatus::Cancelled
@@ -123,34 +111,14 @@ impl DownloadManager {
                     emit(&inner, current.clone());
                 }
             }
-            let should_advance = inner.current.read().as_ref().is_none_or(|state| {
-                !matches!(
-                    state.status,
-                    DownloadStatus::Paused
-                        | DownloadStatus::Downloading
-                        | DownloadStatus::Assembling
-                )
-            });
-            if should_advance {
-                *inner.cancel.lock() = None;
-                let next = inner.queue.lock().pop_front();
-                if let Some(next) = next {
-                    let manager = DownloadManager { inner };
-                    manager.launch(next.id, next.request, None);
-                }
-            }
+            inner.cancels.lock().remove(&id);
+            inner.speeds.lock().remove(&id);
+            let manager = DownloadManager { inner };
+            manager.start_next();
         });
     }
 
     fn start_next(&self) {
-        if self.inner.current.read().as_ref().is_some_and(|s| {
-            matches!(
-                s.status,
-                DownloadStatus::Downloading | DownloadStatus::Assembling | DownloadStatus::Paused
-            )
-        }) {
-            return;
-        }
         if let Some(next) = self.inner.queue.lock().pop_front() {
             self.launch(next.id, next.request, None);
         }
@@ -158,15 +126,12 @@ impl DownloadManager {
 
     pub async fn pause(&self, id: &str) -> Result<()> {
         {
-            let mut current = self.inner.current.write();
-            let state = current.as_mut().ok_or(EngineError::NoActiveDownload)?;
-            if state.id != id {
-                return Err(EngineError::Message(format!("download {id} is not active")));
-            }
+            let mut active = self.inner.active.write();
+            let state = active.get_mut(id).ok_or(EngineError::NoActiveDownload)?;
             if state.status != DownloadStatus::Downloading {
                 return Ok(());
             }
-            if let Some(cancel) = self.inner.cancel.lock().as_ref() {
+            if let Some(cancel) = self.inner.cancels.lock().get(id) {
                 cancel.cancel();
             }
             state.status = DownloadStatus::Paused;
@@ -177,49 +142,57 @@ impl DownloadManager {
                 chunk.current_block_index = None;
                 chunk.speed_bytes_per_sec = 0;
             }
-            self.inner.speed.lock().samples_by_stream.clear();
+            if let Some(speed) = self.inner.speeds.lock().get_mut(id) {
+                speed.samples_by_stream.clear();
+            }
             emit(&self.inner, state.clone());
         }
         self.persist_manifest().await
     }
 
     pub async fn resume(&self, id: &str) -> Result<()> {
-        let (id, destination) = {
-            let current = self.inner.current.read();
-            let state = current.as_ref().ok_or(EngineError::NoActiveDownload)?;
-            if state.id != id {
-                return Err(EngineError::Message(format!("download {id} is not active")));
-            }
-            if state.status != DownloadStatus::Paused {
+        let (id_str, destination) = {
+            let mut active = self.inner.active.write();
+            let state = active.get_mut(id).ok_or(EngineError::NoActiveDownload)?;
+            if !matches!(state.status, DownloadStatus::Paused | DownloadStatus::Error) {
                 return Ok(());
             }
+            state.status = DownloadStatus::Downloading;
+            state.error = None;
+            emit(&self.inner, state.clone());
             (state.id.clone(), state.destination_path.clone())
         };
         let req = self
             .inner
             .requests
             .lock()
-            .get(&id)
+            .get(&id_str)
             .cloned()
             .ok_or_else(|| EngineError::Message("download request is unavailable".into()))?;
-        self.launch(id, req, Some(destination));
+        self.launch(id_str, req, Some(destination));
         Ok(())
     }
 
     pub async fn cancel(&self, id: Option<&str>) -> Result<()> {
-        if let Some(current) = self.inner.current.write().as_mut() {
-            if id.is_none_or(|id| id == current.id) {
-                if let Some(cancel) = self.inner.cancel.lock().as_ref() {
-                    cancel.cancel();
-                }
-                current.status = DownloadStatus::Cancelled;
-                emit(&self.inner, current.clone());
-                return Ok(());
-            }
-        }
         if let Some(id) = id {
+            if let Some(cancel) = self.inner.cancels.lock().get(id) {
+                cancel.cancel();
+            }
+            if let Some(state) = self.inner.active.write().get_mut(id) {
+                state.status = DownloadStatus::Cancelled;
+                emit(&self.inner, state.clone());
+            }
             self.inner.queue.lock().retain(|item| item.id != id);
-            self.inner.requests.lock().remove(id);
+            self.persist_manifest().await?;
+        } else {
+            for cancel in self.inner.cancels.lock().values() {
+                cancel.cancel();
+            }
+            for state in self.inner.active.write().values_mut() {
+                state.status = DownloadStatus::Cancelled;
+                emit(&self.inner, state.clone());
+            }
+            self.inner.queue.lock().clear();
             self.persist_manifest().await?;
         }
         Ok(())
@@ -227,15 +200,10 @@ impl DownloadManager {
 
     pub async fn remove(&self, id: &str) -> Result<()> {
         self.cancel(Some(id)).await?;
-        let removed = {
-            let mut current = self.inner.current.write();
-            if current.as_ref().is_some_and(|state| state.id == id) {
-                current.take()
-            } else {
-                None
-            }
-        };
+        let removed = self.inner.active.write().remove(id);
         self.inner.requests.lock().remove(id);
+        self.inner.cancels.lock().remove(id);
+        self.inner.speeds.lock().remove(id);
         if let Some(state) = removed {
             let _ = fs::remove_file(state.destination_path).await;
             let _ = fs::remove_dir_all(self.inner.data_dir.join("parts").join(id)).await;
@@ -246,8 +214,18 @@ impl DownloadManager {
     }
 
     pub fn get_current(&self) -> Option<DownloadState> {
-        self.inner.current.read().clone()
+        let active = self.inner.active.read();
+        active
+            .values()
+            .find(|s| s.status == DownloadStatus::Downloading)
+            .or_else(|| active.values().next())
+            .cloned()
     }
+
+    pub fn get_active(&self) -> Vec<DownloadState> {
+        self.inner.active.read().values().cloned().collect()
+    }
+
     pub fn list_queue(&self) -> Vec<QueueItem> {
         self.inner.queue.lock().iter().cloned().collect()
     }
@@ -290,8 +268,6 @@ async fn run_job(
                 req.interface_ids.is_empty() || req.interface_ids.contains(&interface.id)
             })
             .filter_map(|interface| {
-                // Prefer a global IPv4 address — binding an IPv6 source to an IPv4 CDN
-                // endpoint is a common "error sending request" failure mode.
                 let address = interface
                     .addresses
                     .iter()
@@ -320,7 +296,7 @@ async fn run_job(
             .unwrap_or_else(|| req.chunk_count.div_ceil(interfaces.len()).max(1)),
         max_block_bytes: req.max_block_bytes,
     });
-    let blocks: Vec<_> = (0..plan.block_count)
+    let mut blocks: Vec<_> = (0..plan.block_count)
         .map(|index| {
             let start = index as u64 * plan.block_size_bytes;
             BlockState {
@@ -362,6 +338,36 @@ async fn run_job(
         })
         .collect();
     let total_bytes = probe.total_bytes.unwrap_or(req.total_bytes);
+
+    let cancel = CancellationToken::new();
+    inner.cancels.lock().insert(id.clone(), cancel.clone());
+    inner.speeds.lock().insert(id.clone(), SpeedRuntime::default());
+
+    let parts_dir = inner.data_dir.join("parts").join(&id);
+    fs::create_dir_all(&parts_dir).await?;
+
+    // Check existing part files on disk to resume previously completed blocks!
+    let mut initial_downloaded = 0_u64;
+    let mut pending_indices = VecDeque::new();
+    for (i, block) in blocks.iter_mut().enumerate() {
+        let path = part_files::part_file(&parts_dir, &id, i);
+        let expected_len = block
+            .range_end
+            .unwrap_or(block.range_start)
+            .saturating_sub(block.range_start)
+            + 1;
+        if let Ok(meta) = fs::metadata(&path).await {
+            if meta.len() >= expected_len {
+                block.status = BlockStatus::Completed;
+                block.bytes_downloaded = expected_len;
+                initial_downloaded += expected_len;
+                continue;
+            }
+        }
+        pending_indices.push_back(i);
+    }
+    let pending_queue = Arc::new(Mutex::new(pending_indices));
+
     let state = DownloadState {
         id: id.clone(),
         url: req.url.clone(),
@@ -370,7 +376,7 @@ async fn run_job(
         speed_bytes_per_sec: 0,
         status: DownloadStatus::Downloading,
         total_bytes,
-        bytes_downloaded: 0,
+        bytes_downloaded: initial_downloaded,
         total_blocks: Some(plan.block_count),
         block_size_bytes: Some(plan.block_size_bytes),
         blocks,
@@ -382,17 +388,8 @@ async fn run_job(
         completed_at: None,
         assembled_bytes: None,
     };
-    *inner.current.write() = Some(state.clone());
+    inner.active.write().insert(id.clone(), state.clone());
     emit(&inner, state);
-    {
-        let mut speed = inner.speed.lock();
-        *speed = SpeedRuntime::default();
-    }
-    let cancel = CancellationToken::new();
-    *inner.cancel.lock() = Some(cancel.clone());
-    let parts_dir = inner.data_dir.join("parts").join(&id);
-    fs::create_dir_all(&parts_dir).await?;
-    let next = Arc::new(AtomicUsize::new(0));
 
     // Refresh speeds even when a connection goes quiet, so TOTAL SPEED / the chart decay to 0.
     {
@@ -405,14 +402,14 @@ async fn run_job(
                     _ = cancel.cancelled() => break,
                     _ = tokio::time::sleep(std::time::Duration::from_millis(SPEED_TICK_MS)) => {
                         let snapshot = {
-                            let mut current = inner.current.write();
-                            let Some(state) = current.as_mut().filter(|state| {
-                                state.id == id && state.status == DownloadStatus::Downloading
+                            let mut active = inner.active.write();
+                            let Some(state) = active.get_mut(&id).filter(|state| {
+                                state.status == DownloadStatus::Downloading
                             }) else {
                                 break;
                             };
                             let previous = state.speed_bytes_per_sec;
-                            refresh_speeds(&inner, state);
+                            refresh_speeds(&inner, &id, state);
                             if state.speed_bytes_per_sec != previous {
                                 Some(state.clone())
                             } else {
@@ -420,7 +417,7 @@ async fn run_job(
                             }
                         };
                         if let Some(state) = snapshot {
-                            emit_throttled(&inner, state, true);
+                            emit_throttled(&inner, &id, state, true);
                         }
                     }
                 }
@@ -431,7 +428,7 @@ async fn run_job(
     let mut workers = Vec::new();
     for (stream_id, network_index) in plan.stream_networks.iter().copied().enumerate() {
         let inner = inner.clone();
-        let next = next.clone();
+        let pending_queue = pending_queue.clone();
         let cancel = cancel.clone();
         let req = req.clone();
         let id = id.clone();
@@ -442,10 +439,16 @@ async fn run_job(
                 if cancel.is_cancelled() {
                     return Err(EngineError::Cancelled);
                 }
-                let index = next.fetch_add(1, Ordering::SeqCst);
+                let index = {
+                    let mut queue = pending_queue.lock();
+                    match queue.pop_front() {
+                        Some(i) => i,
+                        None => break,
+                    }
+                };
                 let (start, end, interface_id) = {
-                    let mut current = inner.current.write();
-                    let state = current.as_mut().ok_or(EngineError::NoActiveDownload)?;
+                    let mut active = inner.active.write();
+                    let state = active.get_mut(&id).ok_or(EngineError::NoActiveDownload)?;
                     let Some(block) = state.blocks.get_mut(index) else {
                         break;
                     };
@@ -469,6 +472,7 @@ async fn run_job(
                 };
                 let path = part_files::part_file(&parts_dir, &id, index);
                 let mut last_position = 0_u64;
+                let id_for_progress = id.clone();
                 download_range(
                     source,
                     start,
@@ -483,10 +487,8 @@ async fn run_job(
                             return;
                         }
                         let snapshot = {
-                            let mut current = inner.current.write();
-                            let Some(state) =
-                                current.as_mut().filter(|state| state.id == id)
-                            else {
+                            let mut active = inner.active.write();
+                            let Some(state) = active.get_mut(&id_for_progress) else {
                                 return;
                             };
                             let old = state.blocks[index].bytes_downloaded;
@@ -498,7 +500,8 @@ async fn run_job(
                             state.bytes_downloaded += position.saturating_sub(old);
                             state.chunks[stream_id].bytes_downloaded += delta;
                             {
-                                let mut speed = inner.speed.lock();
+                                let mut speeds = inner.speeds.lock();
+                                let speed = speeds.entry(id_for_progress.clone()).or_default();
                                 let received = {
                                     let received = speed
                                         .received_by_stream
@@ -508,8 +511,7 @@ async fn run_job(
                                     *received
                                 };
                                 let now = now_ms();
-                                let samples =
-                                    speed.samples_by_stream.entry(stream_id).or_default();
+                                let samples = speed.samples_by_stream.entry(stream_id).or_default();
                                 state.chunks[stream_id].speed_bytes_per_sec =
                                     push_speed_sample(samples, received, now);
                             }
@@ -517,17 +519,16 @@ async fn run_job(
                             Some(state.clone())
                         };
                         if let Some(state) = snapshot {
-                            emit_throttled(&inner, state, false);
+                            emit_throttled(&inner, &id_for_progress, state, false);
                         }
                     },
                 )
                 .await?;
-                let mut current = inner.current.write();
-                if let Some(state) = current.as_mut() {
+                let mut active = inner.active.write();
+                if let Some(state) = active.get_mut(&id) {
                     state.blocks[index].status = BlockStatus::Completed;
                     state.chunks[stream_id].status = ChunkStatus::Pending;
                     state.chunks[stream_id].current_block_index = None;
-                    // Keep last measured speed briefly; the ticker will decay it.
                 }
             }
             Ok::<(), EngineError>(())
@@ -537,7 +538,7 @@ async fn run_job(
         match worker.await {
             Ok(Ok(())) => {}
             Ok(Err(EngineError::Cancelled))
-                if inner.current.read().as_ref().is_some_and(|s| {
+                if inner.active.read().get(&id).is_some_and(|s| {
                     matches!(s.status, DownloadStatus::Paused | DownloadStatus::Cancelled)
                 }) =>
             {
@@ -551,8 +552,8 @@ async fn run_job(
         .map(|index| part_files::part_file(&parts_dir, &id, index))
         .collect();
     {
-        let mut current = inner.current.write();
-        if let Some(state) = current.as_mut().filter(|state| state.id == id) {
+        let mut active = inner.active.write();
+        if let Some(state) = active.get_mut(&id) {
             state.status = DownloadStatus::Assembling;
             state.assembled_bytes = Some(0);
             state.speed_bytes_per_sec = 0;
@@ -564,8 +565,8 @@ async fn run_job(
     }
     part_files::assemble(&parts, &destination).await?;
     {
-        let mut current = inner.current.write();
-        if let Some(state) = current.as_mut().filter(|state| state.id == id) {
+        let mut active = inner.active.write();
+        if let Some(state) = active.get_mut(&id) {
             state.status = DownloadStatus::Completed;
             state.bytes_downloaded = state.total_bytes;
             state.assembled_bytes = Some(state.total_bytes);
@@ -612,15 +613,14 @@ fn calculate_current_speed(samples: &mut Vec<(u64, u64)>, time: u64) -> u64 {
     let Some(&(oldest_bytes, oldest_time)) = samples.first() else {
         return 0;
     };
-    // At least a second: a fresh window can hold two samples ms apart, and one socket burst
-    // over a few ms reads as a speed the connection never had (and sticks as the UI peak).
     let delta_seconds = ((time.saturating_sub(oldest_time)) as f64 / 1000.0).max(1.0);
     ((latest_bytes.saturating_sub(oldest_bytes)) as f64 / delta_seconds).round() as u64
 }
 
-fn refresh_speeds(inner: &Inner, state: &mut DownloadState) {
+fn refresh_speeds(inner: &Inner, id: &str, state: &mut DownloadState) {
     let now = now_ms();
-    let mut speed = inner.speed.lock();
+    let mut speeds = inner.speeds.lock();
+    let speed = speeds.entry(id.to_string()).or_default();
     let mut total = 0_u64;
     for (stream_id, chunk) in state.chunks.iter_mut().enumerate() {
         if chunk.status == ChunkStatus::Downloading {
@@ -648,10 +648,11 @@ fn refresh_total_speed(state: &mut DownloadState) {
         .sum();
 }
 
-fn emit_throttled(inner: &Inner, state: DownloadState, force: bool) {
+fn emit_throttled(inner: &Inner, id: &str, state: DownloadState, force: bool) {
     let now = now_ms();
     {
-        let mut speed = inner.speed.lock();
+        let mut speeds = inner.speeds.lock();
+        let speed = speeds.entry(id.to_string()).or_default();
         if !force && now.saturating_sub(speed.last_emit_at) < PROGRESS_THROTTLE_MS {
             return;
         }
@@ -777,7 +778,7 @@ async fn run_torrent_job(
         completed_at: None,
         assembled_bytes: None,
     };
-    *inner.current.write() = Some(state.clone());
+    inner.active.write().insert(id.clone(), state.clone());
     emit(&inner, state.clone());
 
     let engine = crate::torrent::default_engine();
@@ -785,14 +786,14 @@ async fn run_torrent_job(
         Ok(_) => {
             state.status = DownloadStatus::Completed;
             state.completed_at = Some(now_ms());
-            *inner.current.write() = Some(state.clone());
+            inner.active.write().insert(id.clone(), state.clone());
             emit(&inner, state);
             Ok(())
         }
         Err(error) => {
             state.status = DownloadStatus::Error;
             state.error = Some(error.to_string());
-            *inner.current.write() = Some(state.clone());
+            inner.active.write().insert(id.clone(), state.clone());
             emit(&inner, state);
             Err(error)
         }

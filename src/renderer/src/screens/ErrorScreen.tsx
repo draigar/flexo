@@ -15,6 +15,7 @@ export function ErrorScreen({
   onDownloadAgain: () => void
 }): React.JSX.Element {
   const [copied, setCopied] = useState(false)
+  const [resuming, setResuming] = useState(false)
   const cancelled = download.status === 'cancelled'
   const knownSize = download.totalBytes > 0
   const percent = knownSize
@@ -26,6 +27,15 @@ export function ErrorScreen({
     : download.error
       ? describeError(download.error)
       : 'An error occurred during transfer.'
+
+  const handleResume = async (): Promise<void> => {
+    setResuming(true)
+    try {
+      await window.flexo.resumeDownload(download.id)
+    } catch {
+      setResuming(false)
+    }
+  }
 
   const handleCopyUrl = async (): Promise<void> => {
     try {
@@ -130,8 +140,8 @@ export function ErrorScreen({
 
           {/* Action Buttons in Center */}
           <div className="mt-1 flex w-full justify-center gap-2.5">
-            <Button type="button" onClick={onDownloadAgain}>
-              Download Again
+            <Button type="button" onClick={handleResume} disabled={resuming}>
+              {resuming ? 'Resuming…' : 'Resume Download'}
             </Button>
             <Button type="button" variant="secondary" onClick={onNewDownload}>
               New Download

@@ -26,6 +26,7 @@ export interface IpcContract {
   startDownload: { args: [request: StartDownloadRequest]; result: string }
   startSimulatedDownload: { args: [request: StartSimulatedDownloadRequest]; result: string }
   getCurrentDownload: { args: []; result: DownloadState | null }
+  getActiveDownloads: { args: []; result: DownloadState[] }
   pauseDownload: { args: [id: string]; result: void }
   resumeDownload: { args: [id: string]; result: void }
   cancelDownload: { args: [id: string]; result: void }

@@ -228,8 +228,14 @@ export function IdleScreen(): React.JSX.Element {
       maxBlockBytes
     }
     try {
-      if (enqueue) await window.flexo.enqueueDownload(request)
-      else await window.flexo.startDownload(request)
+      if (enqueue) {
+        await window.flexo.enqueueDownload(request)
+      } else {
+        const id = await window.flexo.startDownload(request)
+        if (id) {
+          useAppStore.getState().setFocusedDownloadId(id)
+        }
+      }
     } catch (error) {
       setStartError(describeError(error))
     } finally {
@@ -264,7 +270,7 @@ export function IdleScreen(): React.JSX.Element {
     setStarting(true)
     setStartError(null)
     try {
-      await window.flexo.startMediaDownload(candidate.id, {
+      const id = await window.flexo.startMediaDownload(candidate.id, {
         url: candidate.url,
         destinationDir,
         suggestedFileName: fileNameOverride?.trim() || candidate.title || 'video',
@@ -277,6 +283,9 @@ export function IdleScreen(): React.JSX.Element {
         lastModified: null,
         maxBlockBytes
       })
+      if (id) {
+        useAppStore.getState().setFocusedDownloadId(id)
+      }
       useAppStore.getState().clearMediaCandidates()
     } catch (error) {
       setStartError(describeError(error))

@@ -107,6 +107,9 @@ impl Engine {
     pub async fn get_current(&self) -> Option<DownloadState> {
         self.manager.get_current()
     }
+    pub async fn get_active(&self) -> Vec<DownloadState> {
+        self.manager.get_active()
+    }
     pub async fn get_queue(&self) -> Vec<QueueItem> {
         self.manager.list_queue()
     }

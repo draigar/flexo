@@ -70,6 +70,7 @@ export const flexoApi = {
   startSimulatedDownload: (request: StartSimulatedDownloadRequest) =>
     invoke<string>('startSimulatedDownload', { payload: request }),
   getCurrentDownload: () => invoke<DownloadState | null>('getCurrentDownload'),
+  getActiveDownloads: () => invoke<DownloadState[]>('getActiveDownloads'),
   pauseDownload: (downloadId: string) => invoke<void>('pauseDownload', { payload: downloadId }),
   resumeDownload: (downloadId: string) => invoke<void>('resumeDownload', { payload: downloadId }),
   cancelDownload: (downloadId: string) => invoke<void>('cancelDownload', { payload: downloadId }),
