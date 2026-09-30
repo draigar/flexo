@@ -1,0 +1,624 @@
+@import 'tailwindcss';
+
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('./fonts/Manrope-Variable.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Roboto Mono';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('./fonts/RobotoMono-Variable.woff2') format('woff2');
+}
+
+/* Three concepts live here. The one on screen is <html data-concept>, set from ACTIVE_CONCEPT.
+   charcoal-lime is active. bone-coral and ink-violet are ready to spin up.
+   Every concept gives Wi-Fi, USB, Ethernet, bridge, and other their own hue.
+   :root is Charcoal & Lime in the dark, which is that concept's home look. */
+:root {
+  color-scheme: dark;
+
+  --bg: #171717;
+  --bg-secondary: #1c1f22;
+  --bg-tertiary: #222629;
+  --input-bg: #222629;
+  --track-bg: #2a2f33;
+
+  --text: #f4f1e8;
+  --text-secondary: #a7a39a;
+  --text-tertiary: #8c887e;
+
+  --border: #2c3136;
+  --border-subtle: #24282c;
+  --border-strong: #3a4046;
+  --footer-border: #2c3136;
+
+  --icon-muted: #3a4046;
+  --icon-muted-strong: #4a5158;
+  --scrollbar-thumb: #3a4046;
+
+  --checkbox-shadow: rgba(0, 0, 0, 0.4);
+  --checkbox-inset-shadow: rgba(0, 0, 0, 0.3);
+
+  --hero-bg: linear-gradient(180deg, #1c1f22 0%, #171717 100%);
+  --hero-border: #2c3136;
+
+  /* Wi-Fi lime, Ethernet coral, USB violet, bridge sky, other gold. */
+  --color-wifi: #d6ff4a;
+  --color-wifi-bg: #243018;
+  --color-wifi-border: #445c28;
+  --color-wifi-text: #e7ffb0;
+  --color-wifi-onsolid: #171717;
+
+  --color-ethernet: #ff6b4a;
+  --color-ethernet-bg: #3a221c;
+  --color-ethernet-border: #6b3d30;
+  --color-ethernet-text: #ffc2b3;
+  --color-ethernet-onsolid: #2a100c;
+
+  --color-usb: #7b6cff;
+  --color-usb-bg: #262244;
+  --color-usb-border: #433c78;
+  --color-usb-text: #d2ccff;
+  --color-usb-onsolid: #120e24;
+
+  --color-bridge: #5ec8ff;
+  --color-bridge-bg: #163040;
+  --color-bridge-border: #2c5c78;
+  --color-bridge-text: #c5ecff;
+  --color-bridge-onsolid: #061820;
+
+  --color-other: #ffb020;
+  --color-other-bg: #3a2a12;
+  --color-other-border: #6a4c1e;
+  --color-other-text: #ffe0a3;
+  --color-other-onsolid: #241806;
+
+  --color-neutral: #8c887e;
+  --color-neutral-bg: #26292c;
+  --color-neutral-border: #3a4046;
+  --color-neutral-text: #a7a39a;
+  --color-neutral-onsolid: #171717;
+
+  --color-accent: #d6ff4a;
+  --color-accent-onsolid: #171717;
+  --color-success: #d6ff4a;
+  --color-success-bg: #243018;
+  --color-success-border: #445c28;
+
+  --color-warning: #ffb020;
+  --color-warning-bg: #3a2a12;
+  --color-warning-border: #6a4c1e;
+  --color-warning-text: #ffe0a3;
+
+  --color-danger: #ff4d6a;
+  --color-danger-bg: #3a1820;
+  --color-danger-border: #6a3040;
+
+  --node-accent: #d6ff4a;
+
+  /* Shared corner radius for shadcn/Base UI components — matches the 8px most hand-styled
+     buttons/cards already use (see theme.ts), so new and existing components read as one system. */
+  --radius: 8px;
+}
+
+/* Maps shadcn/Base UI's expected semantic tokens onto Flexo's existing palette above, instead of
+   introducing a second, parallel color system. Tailwind only generates `bg-primary`-style
+   utilities for names declared here, in `@theme` — so this can freely reuse Flexo's own custom
+   property *values* (e.g. --color-accent) without colliding with their names, since only the
+   left-hand names below become Tailwind tokens. */
+@theme inline {
+  --font-sans: 'Manrope', -apple-system, 'SF Pro Text', 'Helvetica Neue', Helvetica, sans-serif;
+  --font-mono: 'Roboto Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--bg-secondary);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--bg-secondary);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--color-accent);
+  --color-primary-foreground: var(--color-accent-onsolid);
+  --color-secondary: var(--bg-tertiary);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--track-bg);
+  --color-muted-foreground: var(--text-tertiary);
+  --color-destructive: var(--color-danger);
+  --color-border: var(--border);
+  /* Not --input-bg: that's a fill color (white in light mode), invisible as a stroke.
+     border-input needs an actual visible border tone. */
+  --color-input: var(--border-strong);
+  --color-ring: var(--color-accent);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
+
+/* Charcoal & Lime, lifted onto bone so the light toggle keeps the same hues. */
+[data-concept='charcoal-lime'][data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f4f1e8;
+  --bg-secondary: #fffcf7;
+  --bg-tertiary: #eae6dc;
+  --input-bg: #ffffff;
+  --track-bg: #e4e0d6;
+
+  --text: #171717;
+  --text-secondary: #5e5a54;
+  --text-tertiary: #6e6a64;
+
+  --border: #e0dbd0;
+  --border-subtle: #ebe6dc;
+  --border-strong: #c8c2b6;
+  --footer-border: #e0dbd0;
+
+  --icon-muted: #c8c2b6;
+  --icon-muted-strong: #a8a298;
+  --scrollbar-thumb: #c8c2b6;
+
+  --checkbox-shadow: rgba(0, 0, 0, 0.12);
+  --checkbox-inset-shadow: rgba(0, 0, 0, 0.04);
+
+  --hero-bg: linear-gradient(180deg, #fffcf7 0%, #f4f1e8 100%);
+  --hero-border: #e0dbd0;
+
+  --color-wifi: #4f6e10;
+  --color-wifi-bg: #eef6d6;
+  --color-wifi-border: #c5de8c;
+  --color-wifi-text: #3a520c;
+  --color-wifi-onsolid: #f7f6f1;
+
+  --color-ethernet: #d14e34;
+  --color-ethernet-bg: #fde7e1;
+  --color-ethernet-border: #f3c0b4;
+  --color-ethernet-text: #8a301c;
+  --color-ethernet-onsolid: #ffffff;
+
+  --color-usb: #5a48c8;
+  --color-usb-bg: #eeeafe;
+  --color-usb-border: #cfc8f4;
+  --color-usb-text: #3c2f92;
+  --color-usb-onsolid: #ffffff;
+
+  --color-bridge: #1a74ab;
+  --color-bridge-bg: #e4f4fc;
+  --color-bridge-border: #b7dff3;
+  --color-bridge-text: #0e5278;
+  --color-bridge-onsolid: #ffffff;
+
+  --color-other: #b56e08;
+  --color-other-bg: #fbf1d8;
+  --color-other-border: #eed59a;
+  --color-other-text: #7a4a04;
+  --color-other-onsolid: #171717;
+
+  --color-neutral: #6e6a64;
+  --color-neutral-bg: #eae6dc;
+  --color-neutral-border: #c8c2b6;
+  --color-neutral-text: #5e5a54;
+  --color-neutral-onsolid: #ffffff;
+
+  --color-accent: #d6ff4a;
+  --color-accent-onsolid: #171717;
+  --color-success: #4f6e10;
+  --color-success-bg: #eef6d6;
+  --color-success-border: #c5de8c;
+
+  --color-warning: #b56e08;
+  --color-warning-bg: #fbf1d8;
+  --color-warning-border: #eed59a;
+  --color-warning-text: #7a4a04;
+
+  --color-danger: #d7264a;
+  --color-danger-bg: #fde8ec;
+  --color-danger-border: #f5c2cc;
+
+  --node-accent: #4f6e10;
+}
+
+/* Bone & Coral. Home look is the light scheme. Wi-Fi lime, Ethernet coral, USB violet, bridge sky, other gold. */
+[data-concept='bone-coral'][data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f6f3ec;
+  --bg-secondary: #fffcf7;
+  --bg-tertiary: #efeae2;
+  --input-bg: #ffffff;
+  --track-bg: #e7e1d6;
+
+  --text: #1a1916;
+  --text-secondary: #6f6a62;
+  --text-tertiary: #7a756c;
+
+  --border: #e4ddd2;
+  --border-subtle: #efeae2;
+  --border-strong: #c9c1b4;
+  --footer-border: #e4ddd2;
+
+  --icon-muted: #c9c1b4;
+  --icon-muted-strong: #a89f92;
+  --scrollbar-thumb: #c9c1b4;
+
+  --checkbox-shadow: rgba(40, 24, 16, 0.12);
+  --checkbox-inset-shadow: rgba(40, 24, 16, 0.04);
+
+  --hero-bg: linear-gradient(180deg, #fffcf7 0%, #f6f3ec 100%);
+  --hero-border: #e4ddd2;
+
+  --color-wifi: #5f7a16;
+  --color-wifi-bg: #eef5d4;
+  --color-wifi-border: #c8df90;
+  --color-wifi-text: #3e5410;
+  --color-wifi-onsolid: #f6f3ec;
+
+  --color-ethernet: #e24b32;
+  --color-ethernet-bg: #fde6e1;
+  --color-ethernet-border: #f4bfb4;
+  --color-ethernet-text: #8e2c1a;
+  --color-ethernet-onsolid: #ffffff;
+
+  --color-usb: #6e63e0;
+  --color-usb-bg: #eeebfd;
+  --color-usb-border: #cfc8f6;
+  --color-usb-text: #3d3496;
+  --color-usb-onsolid: #ffffff;
+
+  --color-bridge: #2f8fdb;
+  --color-bridge-bg: #e5f3fc;
+  --color-bridge-border: #b7dff4;
+  --color-bridge-text: #0f5684;
+  --color-bridge-onsolid: #ffffff;
+
+  --color-other: #c4841d;
+  --color-other-bg: #fbf1d6;
+  --color-other-border: #efd59a;
+  --color-other-text: #7a4e08;
+  --color-other-onsolid: #1a1916;
+
+  --color-neutral: #7a756c;
+  --color-neutral-bg: #efeae2;
+  --color-neutral-border: #c9c1b4;
+  --color-neutral-text: #6f6a62;
+  --color-neutral-onsolid: #ffffff;
+
+  --color-accent: #e24b32;
+  --color-accent-onsolid: #ffffff;
+  --color-success: #5f7a16;
+  --color-success-bg: #eef5d4;
+  --color-success-border: #c8df90;
+
+  --color-warning: #c4841d;
+  --color-warning-bg: #fbf1d6;
+  --color-warning-border: #efd59a;
+  --color-warning-text: #7a4e08;
+
+  --color-danger: #c4233c;
+  --color-danger-bg: #fde7ea;
+  --color-danger-border: #f3c0c8;
+
+  --node-accent: #1a1916;
+}
+
+[data-concept='bone-coral'][data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #1a1614;
+  --bg-secondary: #241f1c;
+  --bg-tertiary: #2c2622;
+  --input-bg: #2c2622;
+  --track-bg: #342e29;
+
+  --text: #f6f1ea;
+  --text-secondary: #b7afa6;
+  --text-tertiary: #8e867e;
+
+  --border: #3a332e;
+  --border-subtle: #2c2622;
+  --border-strong: #4a433c;
+  --footer-border: #3a332e;
+
+  --icon-muted: #4a433c;
+  --icon-muted-strong: #5c554c;
+  --scrollbar-thumb: #4a433c;
+
+  --checkbox-shadow: rgba(0, 0, 0, 0.4);
+  --checkbox-inset-shadow: rgba(0, 0, 0, 0.3);
+
+  --hero-bg: linear-gradient(180deg, #241f1c 0%, #1a1614 100%);
+  --hero-border: #3a332e;
+
+  --color-wifi: #c6e85a;
+  --color-wifi-bg: #2a3018;
+  --color-wifi-border: #4c5c28;
+  --color-wifi-text: #e7ffb0;
+  --color-wifi-onsolid: #1a1614;
+
+  --color-ethernet: #ff6b4a;
+  --color-ethernet-bg: #3a221c;
+  --color-ethernet-border: #6b3d30;
+  --color-ethernet-text: #ffc2b3;
+  --color-ethernet-onsolid: #2a100c;
+
+  --color-usb: #9b92f0;
+  --color-usb-bg: #2a2640;
+  --color-usb-border: #4a4478;
+  --color-usb-text: #ddd8ff;
+  --color-usb-onsolid: #161222;
+
+  --color-bridge: #6ec8f5;
+  --color-bridge-bg: #163040;
+  --color-bridge-border: #2c5c78;
+  --color-bridge-text: #c5ecff;
+  --color-bridge-onsolid: #061820;
+
+  --color-other: #f0b44a;
+  --color-other-bg: #3a2a12;
+  --color-other-border: #6a4c1e;
+  --color-other-text: #ffe0a3;
+  --color-other-onsolid: #241806;
+
+  --color-neutral: #8e867e;
+  --color-neutral-bg: #2c2622;
+  --color-neutral-border: #4a433c;
+  --color-neutral-text: #b7afa6;
+  --color-neutral-onsolid: #1a1614;
+
+  --color-accent: #ff6b4a;
+  --color-accent-onsolid: #2a100c;
+  --color-success: #c6e85a;
+  --color-success-bg: #2a3018;
+  --color-success-border: #4c5c28;
+
+  --color-warning: #f0b44a;
+  --color-warning-bg: #3a2a12;
+  --color-warning-border: #6a4c1e;
+  --color-warning-text: #ffe0a3;
+
+  --color-danger: #ff5d74;
+  --color-danger-bg: #3a1820;
+  --color-danger-border: #6a3040;
+
+  --node-accent: #f6f1ea;
+}
+
+/* Ink & Violet. Home look is the dark scheme. Wi-Fi violet, Ethernet lime, USB coral, bridge sky, other gold. */
+[data-concept='ink-violet'][data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #12141c;
+  --bg-secondary: #1c2030;
+  --bg-tertiary: #1c2233;
+  --input-bg: #1c2233;
+  --track-bg: #262c40;
+
+  --text: #eeeaf8;
+  --text-secondary: #9a96ab;
+  --text-tertiary: #7e7a90;
+
+  --border: #2a3148;
+  --border-subtle: #222838;
+  --border-strong: #3a4460;
+  --footer-border: #2a3148;
+
+  --icon-muted: #3a4460;
+  --icon-muted-strong: #4a5674;
+  --scrollbar-thumb: #3a4460;
+
+  --checkbox-shadow: rgba(0, 0, 0, 0.45);
+  --checkbox-inset-shadow: rgba(0, 0, 0, 0.3);
+
+  --hero-bg: linear-gradient(180deg, #1c2030 0%, #12141c 100%);
+  --hero-border: #2a3148;
+
+  --color-wifi: #8b7cff;
+  --color-wifi-bg: #262244;
+  --color-wifi-border: #433c78;
+  --color-wifi-text: #d2ccff;
+  --color-wifi-onsolid: #120e24;
+
+  --color-ethernet: #c6f25a;
+  --color-ethernet-bg: #243018;
+  --color-ethernet-border: #445c28;
+  --color-ethernet-text: #e7ffb0;
+  --color-ethernet-onsolid: #141808;
+
+  --color-usb: #ff7a62;
+  --color-usb-bg: #3a221c;
+  --color-usb-border: #6b3d30;
+  --color-usb-text: #ffc8bc;
+  --color-usb-onsolid: #2a100c;
+
+  --color-bridge: #5ec8ff;
+  --color-bridge-bg: #163040;
+  --color-bridge-border: #2c5c78;
+  --color-bridge-text: #c5ecff;
+  --color-bridge-onsolid: #061820;
+
+  --color-other: #ffb020;
+  --color-other-bg: #3a2a12;
+  --color-other-border: #6a4c1e;
+  --color-other-text: #ffe0a3;
+  --color-other-onsolid: #241806;
+
+  --color-neutral: #7e7a90;
+  --color-neutral-bg: #222838;
+  --color-neutral-border: #3a4460;
+  --color-neutral-text: #9a96ab;
+  --color-neutral-onsolid: #12141c;
+
+  --color-accent: #8b7cff;
+  --color-accent-onsolid: #ffffff;
+  --color-success: #c6f25a;
+  --color-success-bg: #243018;
+  --color-success-border: #445c28;
+
+  --color-warning: #ffb020;
+  --color-warning-bg: #3a2a12;
+  --color-warning-border: #6a4c1e;
+  --color-warning-text: #ffe0a3;
+
+  --color-danger: #ff4d6a;
+  --color-danger-bg: #3a1820;
+  --color-danger-border: #6a3040;
+
+  --node-accent: #c6f25a;
+}
+
+[data-concept='ink-violet'][data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f4f2fa;
+  --bg-secondary: #fffbff;
+  --bg-tertiary: #e8e4f4;
+  --input-bg: #ffffff;
+  --track-bg: #e4e0f0;
+
+  --text: #141824;
+  --text-secondary: #5c5870;
+  --text-tertiary: #6e6a82;
+
+  --border: #ddd8ea;
+  --border-subtle: #e8e4f4;
+  --border-strong: #c4bdd6;
+  --footer-border: #ddd8ea;
+
+  --icon-muted: #c4bdd6;
+  --icon-muted-strong: #a49cb8;
+  --scrollbar-thumb: #c4bdd6;
+
+  --checkbox-shadow: rgba(20, 16, 40, 0.12);
+  --checkbox-inset-shadow: rgba(20, 16, 40, 0.04);
+
+  --hero-bg: linear-gradient(180deg, #fffbff 0%, #f4f2fa 100%);
+  --hero-border: #ddd8ea;
+
+  --color-wifi: #5c4ad4;
+  --color-wifi-bg: #eeebfd;
+  --color-wifi-border: #cfc8f4;
+  --color-wifi-text: #3a2e96;
+  --color-wifi-onsolid: #ffffff;
+
+  --color-ethernet: #5a7a14;
+  --color-ethernet-bg: #eef6d6;
+  --color-ethernet-border: #c5de8c;
+  --color-ethernet-text: #3a520c;
+  --color-ethernet-onsolid: #f4f2fa;
+
+  --color-usb: #d4533a;
+  --color-usb-bg: #fde7e1;
+  --color-usb-border: #f3c0b4;
+  --color-usb-text: #8a301c;
+  --color-usb-onsolid: #ffffff;
+
+  --color-bridge: #1a74ab;
+  --color-bridge-bg: #e4f4fc;
+  --color-bridge-border: #b7dff3;
+  --color-bridge-text: #0e5278;
+  --color-bridge-onsolid: #ffffff;
+
+  --color-other: #b56e08;
+  --color-other-bg: #fbf1d8;
+  --color-other-border: #eed59a;
+  --color-other-text: #7a4a04;
+  --color-other-onsolid: #141824;
+
+  --color-neutral: #6e6a82;
+  --color-neutral-bg: #e8e4f4;
+  --color-neutral-border: #c4bdd6;
+  --color-neutral-text: #5c5870;
+  --color-neutral-onsolid: #ffffff;
+
+  --color-accent: #6e5ce0;
+  --color-accent-onsolid: #ffffff;
+  --color-success: #5a7a14;
+  --color-success-bg: #eef6d6;
+  --color-success-border: #c5de8c;
+
+  --color-warning: #b56e08;
+  --color-warning-bg: #fbf1d8;
+  --color-warning-border: #eed59a;
+  --color-warning-text: #7a4a04;
+
+  --color-danger: #d7264a;
+  --color-danger-bg: #fde8ec;
+  --color-danger-border: #f5c2cc;
+
+  --node-accent: #5a7a14;
+}
+
+/* Layered, not plain global CSS, so Tailwind utility classes still win over these resets.
+   Tailwind puts its own utilities in a later layer than base styles, and unlayered CSS beats
+   every layer regardless of specificity, so an unlayered button font reset here previously
+   overrode every text and font utility on every button in the app. box-sizing, margin and
+   padding resets, and the default font family, are already handled by Tailwind Preflight, so
+   they are not repeated here. Body, html and root element sizing now live as utility classes
+   in index.html instead. */
+@layer base {
+  input,
+  [contenteditable] {
+    user-select: text;
+  }
+
+  button {
+    font: inherit;
+  }
+
+  /* No core Tailwind utility for scrollbar pseudo-elements. */
+  ::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 9999px;
+  }
+}
+
+@keyframes flexo-dash {
+  to {
+    stroke-dashoffset: -60;
+  }
+}
+
+@keyframes flexo-glow {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes flexo-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
