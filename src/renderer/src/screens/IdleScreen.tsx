@@ -152,7 +152,9 @@ export function IdleScreen(): React.JSX.Element {
   }
   if (ready && ready.totalBytes !== null) footerParts.push(formatBytes(ready.totalBytes))
   footerParts.push(
-    segmentPreset === 'auto' ? `auto ${maxBlockBytes / (1024 * 1024)} MB blocks` : `${segmentPreset} MB blocks`
+    segmentPreset === 'auto'
+      ? `auto ${maxBlockBytes / (1024 * 1024)} MB blocks`
+      : `${segmentPreset} MB blocks`
   )
 
   let subnetConflict: { subnet: string; names: string[] } | null = null
@@ -545,7 +547,9 @@ export function IdleScreen(): React.JSX.Element {
 
       <ScreenFooter className="gap-2.5">
         <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
-          <div className="font-mono text-[11px] text-muted-foreground">{footerParts.join(' · ')}</div>
+          <div className="font-mono text-[11px] text-muted-foreground">
+            {footerParts.join(' · ')}
+          </div>
           <div className="flex shrink-0 items-center gap-1">
             <Button
               type="button"

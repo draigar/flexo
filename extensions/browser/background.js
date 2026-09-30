@@ -81,8 +81,9 @@ chrome.webRequest.onCompleted.addListener(
             : details.url.includes('.mpd')
               ? 'dash'
               : 'progressive',
-          mimeType: details.responseHeaders?.find((header) => header.name.toLowerCase() === 'content-type')
-            ?.value,
+          mimeType: details.responseHeaders?.find(
+            (header) => header.name.toLowerCase() === 'content-type'
+          )?.value,
           drm: false
         }
       ]
@@ -94,7 +95,9 @@ chrome.webRequest.onCompleted.addListener(
 
 chrome.action.onClicked.addListener((tab) => {
   if (!tab?.url || !DOWNLOAD_URL.test(tab.url)) return
-  void postJson(FLEXO_CAPTURE, { url: tab.url, fileName: tab.title || undefined }).then((accepted) => {
-    if (!accepted) void launchFlexo({ url: tab.url, fileName: tab.title || undefined })
-  })
+  void postJson(FLEXO_CAPTURE, { url: tab.url, fileName: tab.title || undefined }).then(
+    (accepted) => {
+      if (!accepted) void launchFlexo({ url: tab.url, fileName: tab.title || undefined })
+    }
+  )
 })

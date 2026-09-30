@@ -20,7 +20,13 @@ The Rust engine writes the snapshot via `Engine::write_snapshot()` to:
 
 ```json
 {
-  "current": { "id": "...", "fileName": "...", "status": "downloading", "bytesDownloaded": 1, "totalBytes": 2 },
+  "current": {
+    "id": "...",
+    "fileName": "...",
+    "status": "downloading",
+    "bytesDownloaded": 1,
+    "totalBytes": 2
+  },
   "queue": [],
   "writtenAt": 0
 }

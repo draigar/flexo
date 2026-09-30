@@ -55,7 +55,8 @@ export const flexoApi = {
     invoke<IpcContract['deviceBindingSupported']['result']>('deviceBindingSupported'),
   openNetworkSettings: () => invoke<void>('openNetworkSettings'),
   updateSettings: (patch: AppSettings) => invoke<void>('updateSettings', { payload: patch }),
-  probeUrl: (url: string) => invoke<IpcContract['probeUrl']['result']>('probeUrl', { payload: url }),
+  probeUrl: (url: string) =>
+    invoke<IpcContract['probeUrl']['result']>('probeUrl', { payload: url }),
   chooseDestinationFolder: (defaultPath: string) =>
     invoke<string | null>('chooseDestinationFolder', { payload: defaultPath }),
   chooseSourceFile: () => invoke<string | null>('chooseSourceFile'),
@@ -108,7 +109,9 @@ export const flexoApi = {
     return () => unlisten?.()
   },
 
-  onCaptureFailed: (callback: (failure: { url: string; message: string }) => void): (() => void) => {
+  onCaptureFailed: (
+    callback: (failure: { url: string; message: string }) => void
+  ): (() => void) => {
     let unlisten: UnlistenFn | undefined
     void listen<{ url: string; message: string }>('capture:error', (event) =>
       callback(event.payload)

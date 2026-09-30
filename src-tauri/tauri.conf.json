@@ -25,17 +25,13 @@
     ],
     "security": {
       "csp": null,
-      "capabilities": [
-        "default"
-      ]
+      "capabilities": ["default"]
     }
   },
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": [
-          "flexo"
-        ]
+        "schemes": ["flexo"]
       }
     }
   },

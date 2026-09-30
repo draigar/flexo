@@ -36,16 +36,16 @@ cargo test -p flexo-engine
 
 ## Features
 
-| Area | Status |
-|---|---|
-| Multi-interface HTTP range downloads | Engine + UI |
-| Segment presets (Auto / 8 / 16 / 32 / 64 MB) | Engine + Idle screen |
-| Waiting queue + clipboard URL handoff | Engine + Tauri + UI |
-| Browser capture extension | `extensions/browser` |
-| Progressive / clear HLS / clear DASH / yt-dlp | Engine + media sheet (DRM refused) |
-| HTTP mirrors | Engine + Idle screen |
-| Magnets / `.torrent` | Accepted into the engine; librqbit behind `--features torrent` |
-| `flexo://` deep links + widget snapshot | Tauri + `widgets/*` |
+| Area                                          | Status                                                         |
+| --------------------------------------------- | -------------------------------------------------------------- |
+| Multi-interface HTTP range downloads          | Engine + UI                                                    |
+| Segment presets (Auto / 8 / 16 / 32 / 64 MB)  | Engine + Idle screen                                           |
+| Waiting queue + clipboard URL handoff         | Engine + Tauri + UI                                            |
+| Browser capture extension                     | `extensions/browser`                                           |
+| Progressive / clear HLS / clear DASH / yt-dlp | Engine + media sheet (DRM refused)                             |
+| HTTP mirrors                                  | Engine + Idle screen                                           |
+| Magnets / `.torrent`                          | Accepted into the engine; librqbit behind `--features torrent` |
+| `flexo://` deep links + widget snapshot       | Tauri + `widgets/*`                                            |
 
 ## Layout
 
@@ -58,6 +58,19 @@ crates/flexo-engine/   Download engine
 extensions/browser/    Chrome/Edge capture extension
 widgets/macos/         WidgetKit sources
 widgets/windows/       Adaptive Card template
+```
+
+## Releases & Versioning
+
+- Detailed version history: [CHANGELOG.md](./CHANGELOG.md)
+- Release notes for v0.1.0: [RELEASE_NOTES.md](./RELEASE_NOTES.md)
+- Release & automated build workflows guide: [docs/RELEASING.md](./docs/RELEASING.md)
+
+To bump version across all crates and packages:
+
+```bash
+npm run release:patch  # 0.1.0 -> 0.1.1
+npm run release:minor  # 0.1.0 -> 0.2.0
 ```
 
 ## License

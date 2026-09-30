@@ -62,7 +62,9 @@ export function LibraryScreen(): React.JSX.Element {
                 {fileExtensionBadge(record.fileName)}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-medium text-foreground">{record.fileName}</div>
+                <div className="truncate text-[13px] font-medium text-foreground">
+                  {record.fileName}
+                </div>
                 <div className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground">
                   {formatBytes(record.totalBytes)} · {formatWhen(record.completedAt)}
                 </div>

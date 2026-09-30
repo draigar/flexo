@@ -14,7 +14,11 @@
     "typecheck": "tsc -p tsconfig.web.json --noEmit",
     "test:engine": "cargo test -p flexo-engine",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "release:patch": "node scripts/bump-version.mjs patch",
+    "release:minor": "node scripts/bump-version.mjs minor",
+    "release:major": "node scripts/bump-version.mjs major",
+    "release": "node scripts/bump-version.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

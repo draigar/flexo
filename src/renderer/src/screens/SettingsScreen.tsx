@@ -152,7 +152,13 @@ export function SettingsScreen(): React.JSX.Element {
               value={[segmentPreset]}
               onValueChange={(values) => {
                 const next = values[0]
-                if (next === 'auto' || next === '8' || next === '16' || next === '32' || next === '64') {
+                if (
+                  next === 'auto' ||
+                  next === '8' ||
+                  next === '16' ||
+                  next === '32' ||
+                  next === '64'
+                ) {
                   setSegmentPreset(next)
                 }
               }}
@@ -165,7 +171,11 @@ export function SettingsScreen(): React.JSX.Element {
                 Auto
               </ToggleGroupItem>
               {PRESET_SEGMENT_MB.map((preset) => (
-                <ToggleGroupItem key={preset} value={String(preset) as SegmentPreset} className="h-6 min-w-6">
+                <ToggleGroupItem
+                  key={preset}
+                  value={String(preset) as SegmentPreset}
+                  className="h-6 min-w-6"
+                >
                   {preset}
                 </ToggleGroupItem>
               ))}
@@ -213,6 +223,21 @@ export function SettingsScreen(): React.JSX.Element {
               Show folder
             </Button>
           </SettingRow>
+        </section>
+
+        <section className="flex flex-col gap-2">
+          <h2 className={sectionLabelClass}>About</h2>
+          <div className="flex items-center justify-between rounded-[9px] border border-border px-3 py-2.5">
+            <div className="min-w-0">
+              <div className="text-[13px] font-medium text-foreground">Flexo</div>
+              <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                v{__APP_VERSION__} ({__COMMIT_HASH__})
+              </p>
+            </div>
+            <span className="font-mono text-[10px] text-muted-foreground">
+              Build {__BUILD_TIME__}
+            </span>
+          </div>
         </section>
       </div>
     </PageFrame>

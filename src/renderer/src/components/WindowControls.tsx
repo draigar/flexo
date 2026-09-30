@@ -14,11 +14,13 @@ export function WindowControls(): React.JSX.Element {
     const window = getCurrentWindow()
     void window.isMaximized().then(setMaximized)
     let unlisten: (() => void) | undefined
-    void window.onResized(() => {
-      void window.isMaximized().then(setMaximized)
-    }).then((fn) => {
-      unlisten = fn
-    })
+    void window
+      .onResized(() => {
+        void window.isMaximized().then(setMaximized)
+      })
+      .then((fn) => {
+        unlisten = fn
+      })
     return () => unlisten?.()
   }, [])
 
@@ -52,9 +54,7 @@ export function WindowControls(): React.JSX.Element {
           color="#febc2e"
           label="Minimize"
           onClick={minimize}
-          icon={
-            <path d="M3.5 8h9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-          }
+          icon={<path d="M3.5 8h9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />}
         />
         <MacLight
           color="#28c840"
