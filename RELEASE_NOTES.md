@@ -1,42 +1,34 @@
-# Flexo v0.2.0 — Concurrent Downloads, Native Messaging & System Tray
+# Flexo v0.2.1 — Windows Experience & Single-Instance Stability Update
 
-Flexo v0.2.0 is a major feature update that introduces **multiple concurrent downloads** with a dedicated **Ongoing Downloads dashboard**, **Native Messaging browser integration** for seamless capture from Chrome, Edge, Firefox, and Brave, and **desktop system tray support** allowing downloads to continue uninterrupted in the background.
+Flexo v0.2.1 addresses post-installation feedback on Windows, resolving unwanted console/terminal windows, preventing duplicate system tray icons, and enforcing single-instance application lifecycle management.
 
 ---
 
-## What's New in v0.2.0
+## What's Changed in v0.2.1
 
-### 🚀 Simultaneous Multi-Download Manager & Ongoing Dashboard
-- **Concurrent Download Engine**: Flexo can now actively download multiple files in parallel, each running its own multi-interface socket bindings, dynamic work-stealing, and speculative hedging.
-- **Dedicated Ongoing Dashboard**: Switch instantly to the new `OngoingDownloadsScreen` to view real-time progress bars, chunk telemetry, speed indicators, ETAs, and individual pause/resume/cancel controls for every active task.
-- **Combined Bandwidth Telemetry**: Live aggregate throughput graph displaying the combined speed across all network adapters and active downloads.
-- **Header Navigation Pill**: Title bar features an `Ongoing (N)` badge to quickly jump between the single-download block visualizer and the multi-download overview.
+### 🪟 Windows Console / Terminal Window Resolved
+- **GUI Subsystem Configuration**: Configured `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]` in the application binary root (`src-tauri/src/main.rs`). Installed release builds now execute strictly as Windows GUI applications without opening a command prompt or terminal window. Closing or interacting with Windows command prompts will no longer terminate the background application.
 
-### 🌐 Browser Native Messaging Integration
-- **Direct Protocol Handoff**: Standard length-prefixed JSON messaging over stdin/stdout eliminates dependency on HTTP loopback server availability or local port conflicts.
-- **Multi-Browser Compatibility**: Supports Google Chrome, Microsoft Edge, Brave, and Mozilla Firefox.
-- **One-Click Native Host Installer**: Install the native messaging manifest directly from the Settings screen or via the CLI flag:
-  ```bash
-  flexo --install-native-manifest
-  ```
-- **Browser Extension v0.2.0**: The companion extension now attempts Native Messaging first for instant, reliable link interception, with automatic fallback to the local HTTP capture server (`127.0.0.1:17890`).
+### 📌 Duplicate Tray Icons & Single-Instance Enforcement
+- **Single-Instance Plugin**: Registered `tauri-plugin-single-instance` to prevent duplicate app processes. If Flexo is launched a second time (e.g. from the installer finish page, desktop shortcut, or browser capture event), the existing app window is brought to focus, avoiding duplicate instances and multiple tray icons.
+- **Idempotent Tray Registration**: Tray builder now uses a unique ID (`main-tray`) with an active existence check to ensure only a single system tray icon is ever registered.
+- **Clean Tray Destruction**: The system tray icon is explicitly removed on exit so no lingering phantom icons remain in the Windows taskbar.
 
-### 🖥️ Desktop System Tray & Background Downloads
-- **Live Tray Icon**: Displays active download count and real-time aggregate speed in the system menu bar / notification area.
-- **Background Mode**: Closing or minimizing the main window docks Flexo to the tray so large multi-network transfers continue in the background without risk of accidental termination.
-- **Quick Tray Menu**: Easily toggle window visibility or quit cleanly from the tray context menu.
+### 🌐 Native Messaging & Windows Path Normalization
+- **UNC Path Cleaning**: Path references used in Windows registry entries and native messaging manifests are now stripped of Windows `\\?\` prefix, ensuring browsers execute the background helper cleanly.
+- **Broadened Browser Protocol Matching**: Extension detection now covers Edge extension protocols and extension ID parameters, guaranteeing that browser messages route directly through native messaging rather than triggering new application windows.
 
 ---
 
 ## Getting Started
 
-### Installation Assets (v0.2.0)
+### Installation Assets (v0.2.1)
 
 Download the installer or binary for your operating system from the GitHub Release assets:
 
-- **macOS**: `Flexo_0.2.0_universal.dmg` (supports both Apple Silicon and Intel)
-- **Windows**: `Flexo_0.2.0_x64-setup.exe` or `Flexo_0.2.0_x64.msi`
-- **Linux**: `flexo_0.2.0_amd64.deb` or `Flexo_0.2.0_amd64.AppImage`
+- **macOS**: `Flexo_0.2.1_universal.dmg` (Apple Silicon & Intel)
+- **Windows**: `Flexo_0.2.1_x64-setup.exe` or `Flexo_0.2.1_x64.msi`
+- **Linux**: `flexo_0.2.1_amd64.deb` or `Flexo_0.2.1_amd64.AppImage`
 
 ### Run from Source
 

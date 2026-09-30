@@ -833,17 +833,24 @@ fn find_header_end(bytes: &[u8]) -> Option<usize> {
 }
 
 fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    if app.tray_by_id("main-tray").is_some() {
+        return Ok(());
+    }
+
     let show = MenuItem::with_id(app, "show", "Open Flexo", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Flexo", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
 
-    let mut builder = TrayIconBuilder::new()
+    let mut builder = TrayIconBuilder::with_id("main-tray")
         .menu(&menu)
         .tooltip("Flexo")
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => present_main_window(app),
-            "quit" => app.exit(0),
+            "quit" => {
+                let _ = app.remove_tray_by_id("main-tray");
+                app.exit(0);
+            }
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -942,6 +949,14 @@ fn forward_to_handoff(body: &[u8]) -> String {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            present_main_window(app);
+            for arg in argv {
+                if let Some(capture) = capture_from_link(&arg) {
+                    accept_capture(app.clone(), capture);
+                }
+            }
+        }))
         .on_window_event(|window, event| {
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {

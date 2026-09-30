@@ -31,16 +31,26 @@ pub fn resolve_extension_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
     None
 }
 
+pub fn clean_path(path: &Path) -> String {
+    let s = path.to_string_lossy().to_string();
+    if let Some(stripped) = s.strip_prefix(r"\\?\") {
+        stripped.to_owned()
+    } else {
+        s
+    }
+}
+
 pub fn register_native_messaging_host(_app: &tauri::AppHandle) {
     let exe = match std::env::current_exe() {
         Ok(p) => std::fs::canonicalize(&p).unwrap_or(p),
         Err(_) => return,
     };
 
+    let exe_path_str = clean_path(&exe);
     let chrome_manifest = serde_json::json!({
         "name": "com.flexo.app",
         "description": "Flexo Download Manager",
-        "path": exe.to_string_lossy(),
+        "path": exe_path_str,
         "type": "stdio",
         "allowed_origins": [
             format!("chrome-extension://{CHROME_EXTENSION_ID}/")
@@ -50,7 +60,7 @@ pub fn register_native_messaging_host(_app: &tauri::AppHandle) {
     let firefox_manifest = serde_json::json!({
         "name": "com.flexo.app",
         "description": "Flexo Download Manager",
-        "path": exe.to_string_lossy(),
+        "path": exe_path_str,
         "type": "stdio",
         "allowed_extensions": [
             FIREFOX_EXTENSION_ID
@@ -76,16 +86,20 @@ pub fn register_external_extensions(app: &tauri::AppHandle) {
         None => return,
     };
 
-    let chrome_external = serde_json::json!({
-        "external_path": ext_dir.to_string_lossy()
-    });
-    let chrome_ext_str = serde_json::to_string_pretty(&chrome_external).unwrap_or_default();
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let ext_dir_str = clean_path(&ext_dir);
+        let chrome_external = serde_json::json!({
+            "external_path": ext_dir_str
+        });
+        let chrome_ext_str = serde_json::to_string_pretty(&chrome_external).unwrap_or_default();
 
-    #[cfg(target_os = "macos")]
-    write_macos_external_extensions(&chrome_ext_str, &ext_dir);
+        #[cfg(target_os = "macos")]
+        write_macos_external_extensions(&chrome_ext_str, &ext_dir);
 
-    #[cfg(target_os = "linux")]
-    write_linux_external_extensions(&chrome_ext_str, &ext_dir);
+        #[cfg(target_os = "linux")]
+        write_linux_external_extensions(&chrome_ext_str, &ext_dir);
+    }
 
     #[cfg(target_os = "windows")]
     write_windows_external_extensions(&ext_dir);
@@ -218,8 +232,8 @@ fn write_windows_nm_manifests(chrome_manifest: &str, firefox_manifest: &str, _ex
 
         for subkey_path in &registry_paths {
             if let Ok((key, _)) = hkcu.create_subkey(subkey_path) {
-                let path_str = chrome_manifest_path.to_string_lossy();
-                let _ = key.set_value("", &path_str.as_ref());
+                let path_str = clean_path(&chrome_manifest_path);
+                let _ = key.set_value("", &path_str);
             }
         }
 
@@ -240,7 +254,7 @@ fn write_windows_external_extensions(ext_dir: &Path) {
         use winreg::RegKey;
 
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let path_str = ext_dir.to_string_lossy();
+        let path_str = clean_path(ext_dir);
 
         let registry_paths = [
             format!(r"Software\Google\Chrome\Extensions\{CHROME_EXTENSION_ID}"),
@@ -249,12 +263,12 @@ fn write_windows_external_extensions(ext_dir: &Path) {
 
         for subkey_path in &registry_paths {
             if let Ok((key, _)) = hkcu.create_subkey(subkey_path) {
-                let _ = key.set_value("path", &path_str.as_ref());
+                let _ = key.set_value("path", &path_str);
             }
         }
 
         if let Ok((key, _)) = hkcu.create_subkey(r"Software\Mozilla\Firefox\Extensions") {
-            let _ = key.set_value(FIREFOX_EXTENSION_ID, &path_str.as_ref());
+            let _ = key.set_value(FIREFOX_EXTENSION_ID, &path_str);
         }
     }
 }

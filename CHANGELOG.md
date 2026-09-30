@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.1] - 2026-09-30
+
+### Windows Experience Fixes & Single-Instance Stability
+
+This release resolves critical Windows platform issues identified after installation, eliminating extraneous terminal windows, preventing duplicate system tray icons, and streamlining single-instance app execution.
+
+#### Fixed
+
+##### 1. Extraneous Windows Terminal Window
+- **Windows GUI Subsystem**: Configured `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]` in the Tauri application root (`main.rs`). Release builds on Windows now launch purely as a GUI application, preventing the operating system from allocating and displaying a superfluous console/terminal window that closed Flexo when dismissed.
+
+##### 2. Duplicate Tray Icons & Single-Instance Enforcement
+- **Single-Instance Plugin Integration**: Added `tauri-plugin-single-instance` to guarantee that only one instance of Flexo runs at any time. When launched again (via shortcuts, the installer completion screen, or browser capture requests), the existing window is seamlessly focused and brought to the front.
+- **Unique Tray Identification & Creation Guard**: Assigned a persistent ID (`main-tray`) to the system tray builder and added an idempotency check (`app.tray_by_id`) to prevent duplicate icons from being registered in the taskbar.
+- **Clean Tray Removal on Exit**: Explicitly remove the tray icon before exiting the application to prevent ghost/phantom icons in the Windows notification area.
+
+##### 3. Resilient Native Messaging & Path Normalization
+- **UNC Path Cleaning**: Stripped Windows `\\?\` extended-length prefixes from executable and extension folder paths when generating native messaging manifests and writing registry keys for Chrome, Edge, and Firefox.
+- **Extended CLI Pattern Matching**: Enhanced browser invocation detection to recognise Edge extensions and the companion extension ID in addition to standard origin URIs, preventing native messaging calls from triggering secondary app instances.
+
+---
+
 ## [0.2.0] - 2026-09-30
 
 ### Multi-Download Support, Native Browser Messaging & System Tray

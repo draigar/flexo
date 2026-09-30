@@ -138,12 +138,10 @@ function main() {
 
   // 7. Git commit & tag
   console.log(`\n📦 Staging and committing changes...`)
-  run(
-    'git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml crates/flexo-engine/Cargo.toml Cargo.lock extensions/browser/manifest.json CHANGELOG.md README.md RELEASE_NOTES.md scripts/bump-version.mjs'
-  )
+  run('git add -A')
 
-  const commitMsg = `chore(release): v${nextVersion}`
-  run(`git commit -m "${commitMsg}"`)
+  const commitMsg = process.env.COMMIT_MSG || `chore(release): v${nextVersion}`
+  run(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`)
 
   const tagName = `v${nextVersion}`
   console.log(`🏷️ Creating annotated tag ${tagName}...`)
