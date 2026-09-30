@@ -9,9 +9,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = resolve(__dirname, '..')
 
 const PACKAGE_JSON = resolve(ROOT_DIR, 'package.json')
+const PACKAGE_LOCK = resolve(ROOT_DIR, 'package-lock.json')
 const TAURI_CONF = resolve(ROOT_DIR, 'src-tauri/tauri.conf.json')
 const TAURI_CARGO = resolve(ROOT_DIR, 'src-tauri/Cargo.toml')
 const ENGINE_CARGO = resolve(ROOT_DIR, 'crates/flexo-engine/Cargo.toml')
+const EXTENSION_MANIFEST = resolve(ROOT_DIR, 'extensions/browser/manifest.json')
 const CHANGELOG = resolve(ROOT_DIR, 'CHANGELOG.md')
 
 function run(cmd, opts = {}) {
@@ -90,10 +92,17 @@ function main() {
 
   console.log(`\n🚀 Bumping Flexo version: ${currentVersion} -> ${nextVersion}\n`)
 
-  // 1. Update package.json
+  // 1. Update package.json & package-lock.json
   console.log(`• Updating ${PACKAGE_JSON}...`)
   updateJsonFile(PACKAGE_JSON, (data) => {
     data.version = nextVersion
+  })
+  console.log(`• Updating ${PACKAGE_LOCK}...`)
+  updateJsonFile(PACKAGE_LOCK, (data) => {
+    data.version = nextVersion
+    if (data.packages && data.packages['']) {
+      data.packages[''].version = nextVersion
+    }
   })
 
   // 2. Update src-tauri/tauri.conf.json
@@ -109,7 +118,13 @@ function main() {
   console.log(`• Updating ${ENGINE_CARGO}...`)
   updateCargoVersion(ENGINE_CARGO, nextVersion)
 
-  // 4. Run cargo check to update Cargo.lock
+  // 4. Update browser extension manifest
+  console.log(`• Updating ${EXTENSION_MANIFEST}...`)
+  updateJsonFile(EXTENSION_MANIFEST, (data) => {
+    data.version = nextVersion
+  })
+
+  // 5. Run cargo check to update Cargo.lock
   console.log(`• Updating Cargo.lock with cargo check...`)
   try {
     run('cargo check --workspace --quiet')
@@ -117,14 +132,14 @@ function main() {
     console.warn('⚠️ cargo check completed with warnings or error:', err.message)
   }
 
-  // 5. Update CHANGELOG.md if needed
+  // 6. Update CHANGELOG.md if needed
   console.log(`• Checking ${CHANGELOG}...`)
   updateChangelog(nextVersion)
 
-  // 6. Git commit & tag
+  // 7. Git commit & tag
   console.log(`\n📦 Staging and committing changes...`)
   run(
-    'git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml crates/flexo-engine/Cargo.toml Cargo.lock CHANGELOG.md'
+    'git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml crates/flexo-engine/Cargo.toml Cargo.lock extensions/browser/manifest.json CHANGELOG.md README.md RELEASE_NOTES.md scripts/bump-version.mjs'
   )
 
   const commitMsg = `chore(release): v${nextVersion}`

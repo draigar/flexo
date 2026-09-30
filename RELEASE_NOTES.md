@@ -1,30 +1,42 @@
-# Flexo v0.1.0 — Initial Release
+# Flexo v0.2.0 — Concurrent Downloads, Native Messaging & System Tray
 
-Flexo is an open-source, high-performance desktop download manager built with **Rust** (`crates/flexo-engine`), **Tauri 2**, and **React 19**. It aggregates multiple network connections (Wi-Fi, Ethernet, USB cellular modems, tethering) in parallel to maximize download speeds through intelligent byte-range chunking.
+Flexo v0.2.0 is a major feature update that introduces **multiple concurrent downloads** with a dedicated **Ongoing Downloads dashboard**, **Native Messaging browser integration** for seamless capture from Chrome, Edge, Firefox, and Brave, and **desktop system tray support** allowing downloads to continue uninterrupted in the background.
 
 ---
 
-## Highlights
+## What's New in v0.2.0
 
-- 🚀 **Multi-Interface Parallel Aggregation**: Combine your home Wi-Fi, phone's USB hotspot, and Ethernet concurrently.
-- 🧠 **Dynamic Work-Stealing & Speculative Hedging**: Fast connections claim more work; lagging blocks are automatically hedged on idle interfaces to eliminate long tails.
-- 📊 **Visual Block Grid & Live Throughput**: Watch your download progress block-by-block with color coding mapped to each active network interface.
-- 🌐 **Browser Extension & Local Capture**: One-click download interception from Chrome and Edge via embedded capture server (`127.0.0.1:17890`).
-- 🎬 **Stream & Media Capture**: Automatic extraction and remuxing for Progressive HTTP, Clear HLS, and Clear DASH streams via `yt-dlp` and `ffmpeg`.
-- 🗄️ **Local SQLite Database**: Embedded history and persistent state with pause and resume support.
-- 🔗 **Deep Linking & Desktop Widgets**: Integrated with `flexo://` URI scheme, macOS WidgetKit, and Windows Adaptive Cards.
+### 🚀 Simultaneous Multi-Download Manager & Ongoing Dashboard
+- **Concurrent Download Engine**: Flexo can now actively download multiple files in parallel, each running its own multi-interface socket bindings, dynamic work-stealing, and speculative hedging.
+- **Dedicated Ongoing Dashboard**: Switch instantly to the new `OngoingDownloadsScreen` to view real-time progress bars, chunk telemetry, speed indicators, ETAs, and individual pause/resume/cancel controls for every active task.
+- **Combined Bandwidth Telemetry**: Live aggregate throughput graph displaying the combined speed across all network adapters and active downloads.
+- **Header Navigation Pill**: Title bar features an `Ongoing (N)` badge to quickly jump between the single-download block visualizer and the multi-download overview.
+
+### 🌐 Browser Native Messaging Integration
+- **Direct Protocol Handoff**: Standard length-prefixed JSON messaging over stdin/stdout eliminates dependency on HTTP loopback server availability or local port conflicts.
+- **Multi-Browser Compatibility**: Supports Google Chrome, Microsoft Edge, Brave, and Mozilla Firefox.
+- **One-Click Native Host Installer**: Install the native messaging manifest directly from the Settings screen or via the CLI flag:
+  ```bash
+  flexo --install-native-manifest
+  ```
+- **Browser Extension v0.2.0**: The companion extension now attempts Native Messaging first for instant, reliable link interception, with automatic fallback to the local HTTP capture server (`127.0.0.1:17890`).
+
+### 🖥️ Desktop System Tray & Background Downloads
+- **Live Tray Icon**: Displays active download count and real-time aggregate speed in the system menu bar / notification area.
+- **Background Mode**: Closing or minimizing the main window docks Flexo to the tray so large multi-network transfers continue in the background without risk of accidental termination.
+- **Quick Tray Menu**: Easily toggle window visibility or quit cleanly from the tray context menu.
 
 ---
 
 ## Getting Started
 
-### Installation
+### Installation Assets (v0.2.0)
 
-Download the installer for your platform from the release assets:
+Download the installer or binary for your operating system from the GitHub Release assets:
 
-- **macOS**: `Flexo_0.1.0_universal.dmg` or `Flexo_0.1.0_aarch64.dmg` / `Flexo_0.1.0_x64.dmg`
-- **Windows**: `Flexo_0.1.0_x64-setup.exe` or `Flexo_0.1.0_x64.msi`
-- **Linux**: `flexo_0.1.0_amd64.deb` or `Flexo_0.1.0_amd64.AppImage`
+- **macOS**: `Flexo_0.2.0_universal.dmg` (supports both Apple Silicon and Intel)
+- **Windows**: `Flexo_0.2.0_x64-setup.exe` or `Flexo_0.2.0_x64.msi`
+- **Linux**: `flexo_0.2.0_amd64.deb` or `Flexo_0.2.0_amd64.AppImage`
 
 ### Run from Source
 
@@ -33,10 +45,8 @@ Download the installer for your platform from the release assets:
 git clone https://github.com/draigar/flexo.git
 cd flexo
 
-# Install frontend dependencies
+# Install dependencies and launch
 npm install
-
-# Run in development mode
 npm run tauri:dev
 ```
 
@@ -44,4 +54,4 @@ npm run tauri:dev
 
 ## Full Changelog
 
-See [CHANGELOG.md](./CHANGELOG.md) for detailed release history.
+For the complete list of commits and changes across all releases, see [CHANGELOG.md](./CHANGELOG.md).

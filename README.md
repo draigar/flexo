@@ -6,11 +6,12 @@ Flexo is a new project next to [Plexo](https://github.com/anmolkapil/plexo). The
 
 ## Stack
 
-- **UI** — React 19, Tailwind CSS v4, Zustand (copied from Plexo)
-- **Host** — Tauri 2 (`src-tauri/`)
-- **Engine** — `crates/flexo-engine` (HTTP ranges, work-stealing, hedges, mirrors, media, torrents)
+- **UI** — React 19, Tailwind CSS v4, Zustand
+- **Host** — Tauri 2 (`src-tauri/`) with System Tray & Native Messaging host
+- **Engine** — `crates/flexo-engine` (HTTP ranges, multi-download concurrent manager, work-stealing, hedges, mirrors, media, torrents)
 - **Bridge** — `window.flexo` via `@tauri-apps/api`
-- **Browser extension** — `extensions/browser` posts captures to `127.0.0.1:17890`
+- **Browser extension** — `extensions/browser` (Native Messaging host with automatic manifest registration + HTTP capture fallback on `127.0.0.1:17890`)
+- **System Tray** — Background minimization, live download speed indicator, and tray menu
 - **Widgets** — `widgets/macos` (WidgetKit) and `widgets/windows` (Adaptive Card)
 
 ## Requirements
@@ -38,10 +39,12 @@ cargo test -p flexo-engine
 
 | Area                                          | Status                                                         |
 | --------------------------------------------- | -------------------------------------------------------------- |
-| Multi-interface HTTP range downloads          | Engine + UI                                                    |
+| Multi-interface HTTP range downloads          | Engine + UI (Work-stealing & speculative hedging)              |
+| Multiple concurrent active downloads          | Engine + Ongoing Downloads Dashboard                           |
 | Segment presets (Auto / 8 / 16 / 32 / 64 MB)  | Engine + Idle screen                                           |
 | Waiting queue + clipboard URL handoff         | Engine + Tauri + UI                                            |
-| Browser capture extension                     | `extensions/browser`                                           |
+| Browser capture (Native Messaging & HTTP)     | `extensions/browser` + Native host installer + HTTP fallback   |
+| System tray & background mode                 | Tauri tray icon + background minimization on close             |
 | Progressive / clear HLS / clear DASH / yt-dlp | Engine + media sheet (DRM refused)                             |
 | HTTP mirrors                                  | Engine + Idle screen                                           |
 | Magnets / `.torrent`                          | Accepted into the engine; librqbit behind `--features torrent` |
@@ -50,12 +53,12 @@ cargo test -p flexo-engine
 ## Layout
 
 ```text
-src/renderer/          React window
+src/renderer/          React window, Ongoing Downloads, Block visualizer, Settings
 src/shared/            Types, plan, IPC contract
 src/bridge/            window.flexo Tauri client
-src-tauri/             Tauri host, tray, deep links, capture server
-crates/flexo-engine/   Download engine
-extensions/browser/    Chrome/Edge capture extension
+src-tauri/             Tauri host, tray, native messaging, deep links, capture server
+crates/flexo-engine/   Download engine (multi-download manager, scheduler, socket2)
+extensions/browser/    Chrome/Edge/Firefox capture extension (Native Messaging + HTTP)
 widgets/macos/         WidgetKit sources
 widgets/windows/       Adaptive Card template
 ```
@@ -63,14 +66,14 @@ widgets/windows/       Adaptive Card template
 ## Releases & Versioning
 
 - Detailed version history: [CHANGELOG.md](./CHANGELOG.md)
-- Release notes for v0.1.0: [RELEASE_NOTES.md](./RELEASE_NOTES.md)
+- Release notes: [RELEASE_NOTES.md](./RELEASE_NOTES.md)
 - Release & automated build workflows guide: [docs/RELEASING.md](./docs/RELEASING.md)
 
 To bump version across all crates and packages:
 
 ```bash
-npm run release:patch  # 0.1.0 -> 0.1.1
-npm run release:minor  # 0.1.0 -> 0.2.0
+npm run release:patch  # 0.2.0 -> 0.2.1
+npm run release:minor  # 0.2.0 -> 0.3.0
 ```
 
 ## License

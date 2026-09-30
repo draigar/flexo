@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.0] - 2026-09-30
+
+### Multi-Download Support, Native Browser Messaging & System Tray
+
+This release upgrades Flexo with full multi-download concurrent processing, an interactive Ongoing Downloads dashboard, native browser messaging integration for rock-solid download interception, and a desktop system tray presence with background downloads.
+
+#### Added
+
+##### 1. Concurrent Multi-Download Manager & Ongoing Dashboard
+- **Concurrent Download Engine**: Upgraded `crates/flexo-engine` to manage multiple active downloads concurrently, each maintaining its own socket-bound parallel streams, dynamic work-stealing, and speed metrics.
+- **Ongoing Downloads Screen (`OngoingDownloadsScreen.tsx`)**:
+  - Full-screen multi-download dashboard showing all currently active downloads with individual progress bars, chunk telemetry, speed indicators, and remaining time estimations.
+  - Live aggregate throughput analytics displaying real-time combined network bandwidth.
+  - Per-item controls to pause, resume, or cancel any active task independently.
+- **Title Bar Ongoing Tab & Badge**:
+  - Added a dedicated "Ongoing" navigation pill with real-time active download counter (`Ongoing (N)`) in the title bar.
+  - Seamless navigation between the focused single-download block visualizer and the multi-download overview.
+  - Automated view switching when new downloads start or when active tasks complete.
+
+##### 2. Browser Native Messaging Integration
+- **Direct Native Messaging Protocol**: Implemented standard 32-bit length-prefixed JSON messaging over stdin/stdout in `src-tauri` (`native_messaging.rs`), providing resilient link handoff without depending on local HTTP loopback bindings or encountering port conflicts.
+- **Multi-Browser Support**: Compatible with Google Chrome, Microsoft Edge, Brave, and Mozilla Firefox.
+- **CLI Native Host Flag**: Added `--native-messaging-host` CLI flag enabling browsers to launch and communicate directly with Flexo.
+- **Automated Manifest Installer**:
+  - Added `--install-native-manifest` command to write native messaging manifest files into OS-standard browser registration directories on macOS, Windows (via Windows Registry), and Linux.
+  - Added a one-click "Install Native Messaging Host" button in the Settings screen.
+- **Extension Update (v0.2.0)**:
+  - Updated `extensions/browser` to connect to Flexo via Native Messaging first, with automatic fallback to HTTP capture (`127.0.0.1:17890`).
+
+##### 3. Desktop System Tray & Background Downloads
+- **System Tray Presence**: Native system tray icon displaying active download counts and combined speeds.
+- **Context Tray Menu**: Quick-access menu offering "Show Flexo", "Hide Flexo", and "Quit Flexo".
+- **Background Mode**: Closing or minimizing the main window automatically minimizes to the system tray, allowing ongoing downloads to complete uninterrupted in the background.
+
+#### Changed
+- Idle screen now displays an "Ongoing Downloads" quick-switch button when background tasks are running.
+- Zustand store (`useAppStore.ts`) expanded to track all active tasks, global aggregate metrics, and active task selections.
+- Improved clipboard URL auto-detection and validation.
+
+#### Fixed
+- Fixed task state transitions when downloads complete while multiple tasks are in flight.
+- Cleaned up socket allocations when cancelling individual active downloads.
+
+---
+
 ## [0.1.0] - 2026-09-30
 
 ### Initial Release
