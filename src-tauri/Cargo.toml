@@ -1,6 +1,6 @@
 [package]
 name = "Flexo"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 
 [lib]
@@ -32,3 +32,6 @@ tauri-plugin-single-instance = "2"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

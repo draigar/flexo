@@ -7,19 +7,64 @@ use std::collections::BTreeMap;
 use std::net::IpAddr;
 
 pub fn classify(name: &str) -> NetworkKind {
-    let name = name.to_ascii_lowercase();
-    if name.starts_with("wl") || name.contains("wifi") || name.contains("wlan") || name == "en0" {
-        NetworkKind::Wifi
-    } else if name.contains("usb") || name.contains("rndis") || name.contains("iphone") {
-        NetworkKind::Usb
-    } else if name.starts_with("br") || name.contains("bridge") {
-        NetworkKind::Bridge
-    } else if name.starts_with("en") || name.starts_with("eth") {
-        NetworkKind::Ethernet
-    } else {
-        NetworkKind::Other
+    let n = name.to_ascii_lowercase();
+
+    // Wi-Fi / Wireless
+    // macOS: en0, Linux: wl*, Windows: "wi-fi", "wireless"
+    if n == "en0"
+        || n.starts_with("wl")
+        || n.contains("wifi")
+        || n.contains("wi-fi")
+        || n.contains("wlan")
+        || n.contains("wireless")
+    {
+        return NetworkKind::Wifi;
     }
+
+    // USB tethering
+    // Linux: usb*, rndis*, Windows: "iphone usb"
+    if n.contains("usb") || n.contains("rndis") || n.contains("iphone") {
+        return NetworkKind::Usb;
+    }
+
+    // Bridge / virtual (Docker, VMware, Hyper-V, WSL)
+    if n.starts_with("br")
+        || n.contains("bridge")
+        || n.contains("docker")
+        || n.contains("vmnet")
+        || n.contains("vethernet")  // Windows Hyper-V / WSL: "vEthernet (WSL)"
+        || n.contains("virbr")      // Linux libvirt bridge
+        || n.starts_with("vir")
+    {
+        return NetworkKind::Bridge;
+    }
+
+    // VPN / tunnel adapters – treat as Other so they're still usable but distinct
+    if n.starts_with("tun")
+        || n.starts_with("tap")
+        || n.contains("vpn")
+        || n.contains("nordlynx")
+        || n.contains("proton")
+        || n.contains("utun")   // macOS utun for VPN
+    {
+        return NetworkKind::Other;
+    }
+
+    // Ethernet
+    // macOS: en1+, Linux: eth*, eno*, enp*, Windows: "ethernet", "local area connection"
+    if n.starts_with("en")
+        || n.starts_with("eth")
+        || n.starts_with("eno")
+        || n.starts_with("enp")
+        || n.contains("ethernet")
+        || n.contains("local area connection")
+    {
+        return NetworkKind::Ethernet;
+    }
+
+    NetworkKind::Other
 }
+
 
 fn is_usable_address(address: IpAddr) -> bool {
     if address.is_loopback() || address.is_unspecified() {

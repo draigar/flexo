@@ -8,6 +8,7 @@ export function useDownloadEvents(): void {
   const setDraftUrl = useAppStore((store) => store.setDraftUrl)
   const setCaptureError = useAppStore((store) => store.setCaptureError)
   const setMediaCandidates = useAppStore((store) => store.setMediaCandidates)
+  const setNetworkSpeeds = useAppStore((store) => store.setNetworkSpeeds)
 
   useEffect(() => {
     let disposed = false
@@ -21,6 +22,9 @@ export function useDownloadEvents(): void {
       setCaptureError(failure.message)
     })
     const unsubMedia = window.flexo.onMediaCandidates(setMediaCandidates)
+    const unsubSpeeds = window.flexo.onNetworkSpeeds((speeds) => {
+      if (!disposed) setNetworkSpeeds(speeds)
+    })
 
     void window.flexo
       .getActiveDownloads()
@@ -38,6 +42,13 @@ export function useDownloadEvents(): void {
       })
       .catch(() => {})
 
+    void window.flexo
+      .getNetworkSpeeds()
+      .then((speeds) => {
+        if (!disposed && speeds) setNetworkSpeeds(speeds)
+      })
+      .catch(() => {})
+
     return () => {
       disposed = true
       unsubDownload()
@@ -45,6 +56,7 @@ export function useDownloadEvents(): void {
       unsubClipboard()
       unsubCaptureFailed()
       unsubMedia()
+      unsubSpeeds()
     }
-  }, [setCurrentDownload, setQueue, setDraftUrl, setCaptureError, setMediaCandidates])
+  }, [setCurrentDownload, setQueue, setDraftUrl, setCaptureError, setMediaCandidates, setNetworkSpeeds])
 }

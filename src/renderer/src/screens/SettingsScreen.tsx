@@ -70,6 +70,8 @@ export function SettingsScreen(): React.JSX.Element {
   const setAutoDownload = useAppStore((store) => store.setAutoDownload)
   const watchClipboard = useAppStore((store) => store.watchClipboard)
   const setWatchClipboard = useAppStore((store) => store.setWatchClipboard)
+  const maxConcurrentDownloads = useAppStore((store) => store.maxConcurrentDownloads)
+  const setMaxConcurrentDownloads = useAppStore((store) => store.setMaxConcurrentDownloads)
 
   const browse = async (): Promise<void> => {
     const chosen = await window.flexo.chooseDestinationFolder(destinationDir)
@@ -183,6 +185,30 @@ export function SettingsScreen(): React.JSX.Element {
                   className="h-6 min-w-6"
                 >
                   {preset}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </div>
+          <div className="flex flex-col gap-2 rounded-[9px] border border-border px-3 py-2.5">
+            <div className="text-[13px] font-medium text-foreground">Concurrent downloads</div>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              Maximum active downloads running simultaneously. Recommended is 6 for maximum speed without
+              triggering server rate-limits; queue handles up to 100 concurrent downloads.
+            </p>
+            <ToggleGroup
+              value={[String(maxConcurrentDownloads)]}
+              onValueChange={(values) => {
+                if (values.length === 0) return
+                setMaxConcurrentDownloads(Number(values[0]))
+              }}
+              variant="pill"
+              size="xs"
+              spacing={1}
+              aria-label="Concurrent downloads"
+            >
+              {[2, 4, 6, 10, 20, 50, 100].map((count) => (
+                <ToggleGroupItem key={count} value={String(count)} className="h-6 min-w-7 px-1.5">
+                  {count === 6 ? '6 (Rec)' : count}
                 </ToggleGroupItem>
               ))}
             </ToggleGroup>

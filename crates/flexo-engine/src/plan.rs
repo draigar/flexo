@@ -65,10 +65,15 @@ pub fn plan_download(req: PlanRequest) -> DownloadPlan {
             stream_networks: vec![0],
         };
     }
-    let max = req
-        .max_block_bytes
-        .unwrap_or(DEFAULT_MAX_BLOCK_BYTES)
-        .max(1);
+    let max = req.max_block_bytes.unwrap_or_else(|| {
+        if req.total_bytes >= 2 * 1024 * 1024 * 1024 {
+            128 * 1024 * 1024
+        } else if req.total_bytes >= 500 * 1024 * 1024 {
+            64 * 1024 * 1024
+        } else {
+            32 * 1024 * 1024
+        }
+    }).max(1);
     let requested = req.streams_per_network.clamp(1, MAX_STREAMS_PER_NETWORK);
     let target = networks * (requested * 2).max(4);
     let mut block_size = req

@@ -12,6 +12,9 @@ pub mod types;
 pub mod video;
 
 pub use download::manager::DownloadManager;
+pub use network::speed_test::{
+    InterfaceSpeedInfo, NetworkSpeedSnapshot, SpeedMonitor, SpeedUpdateCallback,
+};
 pub use types::*;
 
 use futures::future::join_all;
@@ -44,14 +47,38 @@ pub type Result<T> = std::result::Result<T, EngineError>;
 pub struct Engine {
     data_dir: PathBuf,
     manager: DownloadManager,
+    speed_monitor: SpeedMonitor,
 }
 
 impl Engine {
-    pub fn new(data_dir: PathBuf, on_update: Arc<dyn Fn(DownloadState) + Send + Sync>) -> Self {
+    pub fn new(
+        data_dir: PathBuf,
+        on_update: Arc<dyn Fn(DownloadState) + Send + Sync>,
+        on_speed_update: Option<SpeedUpdateCallback>,
+    ) -> Self {
         Self {
             manager: DownloadManager::new(data_dir.clone(), on_update),
+            speed_monitor: SpeedMonitor::new(on_speed_update),
             data_dir,
         }
+    }
+
+    pub fn speed_monitor(&self) -> &SpeedMonitor {
+        &self.speed_monitor
+    }
+
+    pub async fn get_network_speeds(&self) -> NetworkSpeedSnapshot {
+        self.speed_monitor.get_snapshot().await
+    }
+
+    pub async fn test_network_speeds(&self) -> NetworkSpeedSnapshot {
+        let active = self.manager.get_active();
+        self.speed_monitor.update_all(&active).await
+    }
+
+    pub async fn update_passive_network_speeds(&self) {
+        let active = self.manager.get_active();
+        self.speed_monitor.update_passive_from_chunks(&active).await;
     }
 
     pub async fn list_interfaces(&self) -> Result<Vec<NetworkInterfaceInfo>> {
@@ -114,11 +141,20 @@ impl Engine {
         self.manager.list_queue()
     }
 
+    pub fn set_max_concurrent_downloads(&self, limit: usize) {
+        self.manager.set_max_concurrent(limit);
+    }
+
+    pub fn get_max_concurrent_downloads(&self) -> usize {
+        self.manager.get_max_concurrent()
+    }
+
     pub async fn resolve_media(&self, url: String) -> Result<Vec<MediaCandidate>> {
         let parsed = url::Url::parse(&url)?;
         let path = parsed.path().to_ascii_lowercase();
         if path.ends_with(".m3u8") || path.ends_with(".mpd") {
-            let body = reqwest::get(&url).await?.error_for_status()?.text().await?;
+            let client = network::binding::client_for(None)?;
+            let body = client.get(&url).send().await?.error_for_status()?.text().await?;
             return Ok(vec![video::detect_manifest(&url, &body)?]);
         }
         match self.probe_url(url.clone()).await {

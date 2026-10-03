@@ -7,6 +7,7 @@ import type {
   DownloadState,
   InitialState,
   MediaCandidate,
+  NetworkSpeedSnapshot,
   QueueItem,
   StartDownloadRequest,
   StartSimulatedDownloadRequest
@@ -145,6 +146,22 @@ export const flexoApi = {
     void listen('dev:toggle-panel', () => callback()).then((fn) => {
       unlisten = fn
     })
+    return () => unlisten?.()
+  },
+
+  presentMainWindow: () => invoke<void>('presentMainWindow'),
+  hideTrayPopover: () => invoke<void>('hideTrayPopover'),
+  quitApp: () => invoke<void>('quitApp'),
+  getNetworkSpeeds: () => invoke<NetworkSpeedSnapshot>('getNetworkSpeeds'),
+  triggerSpeedTest: () => invoke<NetworkSpeedSnapshot>('triggerSpeedTest'),
+
+  onNetworkSpeeds: (callback: (snapshot: NetworkSpeedSnapshot) => void): (() => void) => {
+    let unlisten: UnlistenFn | undefined
+    void listen<NetworkSpeedSnapshot>('network:speeds', (event) => callback(event.payload)).then(
+      (fn) => {
+        unlisten = fn
+      }
+    )
     return () => unlisten?.()
   }
 }

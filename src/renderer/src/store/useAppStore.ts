@@ -5,6 +5,7 @@ import type {
   NetworkInterfaceInfo,
   NetworkPreference,
   NetworkPreferences,
+  NetworkSpeedSnapshot,
   QueueItem,
   SegmentPreset,
   ThemeSource,
@@ -32,6 +33,7 @@ interface AppStore {
   segmentPreset: SegmentPreset
   autoDownload: boolean
   watchClipboard: boolean
+  maxConcurrentDownloads: number
   page: 'home' | 'settings' | 'library' | 'ongoing'
 
   availableUpdate: UpdateInfo | null
@@ -62,6 +64,7 @@ interface AppStore {
   setSegmentPreset: (segmentPreset: SegmentPreset) => void
   setAutoDownload: (autoDownload: boolean) => void
   setWatchClipboard: (watchClipboard: boolean) => void
+  setMaxConcurrentDownloads: (maxConcurrentDownloads: number) => void
   setPage: (page: 'home' | 'settings' | 'library' | 'ongoing') => void
   setFocusedDownloadId: (id: string | null) => void
   setActiveDownloads: (downloads: DownloadState[]) => void
@@ -77,6 +80,11 @@ interface AppStore {
   setQueue: (queue: QueueItem[]) => void
   setMediaCandidates: (candidates: MediaCandidate[]) => void
   clearMediaCandidates: () => void
+
+  networkSpeeds: NetworkSpeedSnapshot | null
+  isTestingSpeed: boolean
+  setNetworkSpeeds: (snapshot: NetworkSpeedSnapshot) => void
+  triggerSpeedTest: () => Promise<void>
 }
 
 const initial = window.flexo.initialState
@@ -96,6 +104,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   segmentPreset: initial.segmentPreset ?? 'auto',
   autoDownload: initial.autoDownload ?? true,
   watchClipboard: initial.watchClipboard ?? true,
+  maxConcurrentDownloads: initial.maxConcurrentDownloads ?? 6,
   page: 'home',
   availableUpdate: null,
 
@@ -116,6 +125,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
   captureError: null,
   destinationDir: initial.destinationDir ?? initial.downloadsDir,
   mirrorUrls: [],
+
+  networkSpeeds: null,
+  isTestingSpeed: false,
 
   loadInterfaces: async () => {
     // A re-scan keeps showing the last result. Dropping back to 'loading' would swap App off the
@@ -176,6 +188,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setWatchClipboard: (watchClipboard) => {
     set({ watchClipboard })
     persist({ watchClipboard })
+  },
+
+  setMaxConcurrentDownloads: (maxConcurrentDownloads) => {
+    set({ maxConcurrentDownloads })
+    persist({ maxConcurrentDownloads })
   },
 
   setPage: (page) => set({ page }),
@@ -314,5 +331,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setMirrorUrls: (mirrorUrls) => set({ mirrorUrls }),
   setQueue: (queue) => set({ queue }),
   setMediaCandidates: (mediaCandidates) => set({ mediaCandidates }),
-  clearMediaCandidates: () => set({ mediaCandidates: [] })
+  clearMediaCandidates: () => set({ mediaCandidates: [] }),
+
+  setNetworkSpeeds: (networkSpeeds) => set({ networkSpeeds }),
+  triggerSpeedTest: async () => {
+    set({ isTestingSpeed: true })
+    try {
+      const snapshot = await window.flexo.triggerSpeedTest()
+      set({ networkSpeeds: snapshot })
+    } catch {
+      // Ignored
+    } finally {
+      set({ isTestingSpeed: false })
+    }
+  }
 }))

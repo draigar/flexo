@@ -7,14 +7,15 @@ use std::{
 };
 use tokio::net::TcpStream;
 
-pub const USER_AGENT: &str = "Flexo/0.1 (multi-network download manager)";
+pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Flexo/1.0";
 
 pub fn client_for(local_address: Option<IpAddr>) -> Result<Client> {
     let mut builder = Client::builder()
         .user_agent(USER_AGENT)
-        .connect_timeout(Duration::from_secs(20))
-        .timeout(Duration::from_secs(120))
-        .pool_idle_timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(30))
+        // Do not set a fixed total request timeout (e.g. 120s) because large movie downloads stream over long durations.
+        .pool_idle_timeout(Duration::from_secs(90))
+        .pool_max_idle_per_host(16)
         .tcp_nodelay(true)
         .redirect(reqwest::redirect::Policy::limited(10));
     if let Some(address) = local_address {
@@ -30,7 +31,13 @@ pub async fn send_get(
     configure: impl Fn(RequestBuilder) -> RequestBuilder,
 ) -> Result<Response> {
     let build = |address: Option<IpAddr>| -> Result<RequestBuilder> {
-        Ok(configure(client_for(address)?.request(Method::GET, url)))
+        let req = client_for(address)?
+            .request(Method::GET, url)
+            .header(reqwest::header::USER_AGENT, USER_AGENT)
+            .header(reqwest::header::ACCEPT, "*/*")
+            .header(reqwest::header::ACCEPT_LANGUAGE, "en-US,en;q=0.9")
+            .header(reqwest::header::ACCEPT_ENCODING, "identity");
+        Ok(configure(req))
     };
 
     match build(local_address)?.send().await {

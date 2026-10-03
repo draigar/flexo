@@ -39,4 +39,9 @@ export interface IpcContract {
     args: [candidateId: string, request: StartDownloadRequest]
     result: string
   }
+  presentMainWindow: { args: []; result: void }
+  hideTrayPopover: { args: []; result: void }
+  quitApp: { args: []; result: void }
+  getNetworkSpeeds: { args: []; result: import('./types').NetworkSpeedSnapshot }
+  triggerSpeedTest: { args: []; result: import('./types').NetworkSpeedSnapshot }
 }

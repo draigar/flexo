@@ -177,6 +177,8 @@ export interface AppSettings {
   autoDownload?: boolean
   /** Offer a copied http(s) or magnet link in the link field. */
   watchClipboard?: boolean
+  /** Maximum concurrent active downloads (defaults to 6, up to 100). */
+  maxConcurrentDownloads?: number
 }
 
 /** Everything the renderer needs for its first paint, read synchronously by the preload so no
@@ -194,6 +196,7 @@ export interface InitialState {
   segmentPreset?: SegmentPreset
   autoDownload: boolean
   watchClipboard: boolean
+  maxConcurrentDownloads?: number
 }
 
 export interface DownloadRecord {
@@ -250,4 +253,24 @@ export interface MediaCandidate {
   /** True when a DRM system is required — Flexo will not download these. */
   drm: boolean
   unsupportedReason?: string
+}
+
+export interface InterfaceSpeedInfo {
+  interfaceId: string
+  device: string
+  displayName: string
+  kind: NetworkInterfaceKind
+  address: string
+  downloadBytesPerSec: number
+  uploadBytesPerSec: number
+  latencyMs?: number
+  isActiveProbe: boolean
+  lastUpdatedMs: number
+}
+
+export interface NetworkSpeedSnapshot {
+  interfaces: InterfaceSpeedInfo[]
+  totalDownloadBytesPerSec: number
+  totalUploadBytesPerSec: number
+  timestampMs: number
 }

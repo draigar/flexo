@@ -174,6 +174,9 @@ pub struct AppSettings {
     /// When set, a copied http(s) or magnet link is offered in the link field. Missing means on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watch_clipboard: Option<bool>,
+    /// Maximum concurrent active downloads (defaults to 6, up to 100).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_concurrent_downloads: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

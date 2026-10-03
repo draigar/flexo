@@ -7,7 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.0] - 2026-10-03
+
+### Download Engine Overhaul — Reliable, Resumable & Cross-Platform
+
+This release is a comprehensive rewrite of the download engine. The headline improvements are: large video files no longer fail mid-download, resuming a download picks up from the exact byte where it stopped (no rollback to 0%), and the app silently retries instead of popping an error dialog for temporary server hiccups.
+
+#### Fixed
+
+##### 1. Downloads Failing at ~17% (or Any Fixed Point)
+- **Root cause**: The HTTP client had a hard 120-second total-request timeout. For a typical 1.4 GB video at ~2 MB/s, 120 seconds elapsed at exactly 17% of the file, killing every download at the same point every time.
+- **Fix**: Removed the global request timeout entirely. Downloads can now stream for as long as the server keeps sending data. A 45-second *per-packet inactivity* timeout replaces it — the download is only aborted if no data arrives for 45 seconds, not if the transfer takes a long time.
+
+##### 2. Resuming Rolled Back to 0%
+- **Root cause**: When resuming, the engine reopened part files with `.truncate(true)`, erasing everything already downloaded, then started from byte 0.
+- **Fix**: The engine now inspects how many bytes are already on disk for each block, issues a `Range: bytes=<saved_offset>-<end>` request, and appends from that position. Progress never moves backward.
+
+##### 3. "Download Failed" Dialog for Temporary Errors (429 / 404 / 5xx)
+- **Root cause**: Any single HTTP error (rate-limit, expired token, server blip) immediately marked the download as failed and showed the error dialog, even though the download stream was still healthy.
+- **Fix**: Two retry layers added:
+  - **Block-level (chunk.rs)**: Each block retries up to 8 times with exponential back-off. 429 Too Many Requests honours the server's `Retry-After` header. 404s are retried (Cloudflare Worker tokens can be refreshed).
+  - **Job-level (manager.rs)**: If a job fails due to any transient error (network drop, rate limit, server error), the manager silently waits (2 s → 4 s → 8 s … 30 s) and re-runs the job from disk — up to 10 times — without ever showing the error dialog. The dialog only appears for permanent failures (403 Forbidden, user cancelled, 10 retries exhausted).
+
+##### 4. Cloudflare Worker Rate Limiting (~17% on Proxy URLs)
+- **Root cause**: The engine split files into tiny 8 MB blocks, generating ~180 parallel HTTP requests. Cloudflare Workers have strict sub-request limits; this burst triggered rate limiting at ~30 requests (~240 MB, ~17%).
+- **Fix**: Block size auto-scales based on file size — 64 MB blocks for files ≥ 500 MB, 128 MB for files ≥ 2 GB. A 1.4 GB video now uses ~11 requests instead of ~180.
+
+#### Added
+
+##### 5. Concurrent Downloads (up to 100)
+- Configurable concurrent download slots (default **6**, selectable up to **100**) in Settings → Concurrent Downloads.
+- The queue automatically starts the next download as a slot frees up.
+- On macOS/Linux: raised the OS open-file limit (`RLIMIT_NOFILE`) from the default 256 to 8 192 to prevent "too many open files" errors.
+- On Windows: raised the CRT stdio handle limit from 512 to 2 048 via `_setmaxstdio`.
+
+##### 6. Browser-Identical HTTP Headers
+- Requests now include a standard Chrome User-Agent, `Accept: */*`, `Accept-Language`, and `Accept-Encoding: identity`. CDNs and Cloudflare Workers that previously rejected or deprioritised Flexo traffic now treat it identically to a normal browser.
+
+#### Improved
+
+##### 7. Cross-Platform Reliability (Windows & Linux)
+- **Windows filename safety**: Strips characters illegal on NTFS/FAT (`: * ? " < > |`), trailing dots/spaces, and renames reserved device names (`CON`, `NUL`, `COM1-9`, `LPT1-9`) automatically.
+- **Windows network interface detection**: Wi-Fi (`Wi-Fi`), Ethernet (`Ethernet`, `Local Area Connection`), and Hyper-V/WSL virtual adapters (`vEthernet (WSL)`) are now correctly classified.
+- **Linux network interfaces**: `enp*`, `eno*`, `virbr*`, `docker*`, `tun*`, `tap*`, and VPN adapters are correctly identified.
+
+##### 8. Probe Fallbacks
+- If a server rejects a `HEAD` probe, the engine falls back to a `GET` probe and reads the first byte.
+- RFC 5987 `filename*=UTF-8''...` in `Content-Disposition` is now parsed and percent-decoded to extract the correct file name.
+- MIME type → file extension deduction added as a last-resort fallback.
+
+---
+
 ## [0.2.1] - 2026-09-30
+
 
 ### Windows Experience Fixes & Single-Instance Stability
 

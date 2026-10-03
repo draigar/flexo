@@ -3,18 +3,26 @@
 mod history;
 mod native_messaging;
 
-use flexo_engine::plan::{plan_download, resolve_auto_block_bytes, PlanRequest};
+use flexo_engine::plan::{plan_download, PlanRequest};
 use flexo_engine::{
     AppSettings, DownloadState, Engine, MediaCandidate, NetworkInterfaceInfo, ProbeResult,
     QueueItem, SegmentPreset, StartDownloadRequest, ThemeSource,
 };
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 use tauri::{
-    menu::{Menu, MenuItem},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, State,
+    tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, State, WebviewUrl,
+    WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -48,6 +56,8 @@ struct InitialState {
     segment_preset: Option<flexo_engine::SegmentPreset>,
     auto_download: bool,
     watch_clipboard: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_concurrent_downloads: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -144,6 +154,9 @@ async fn updateSettings(
         merge_settings(&mut settings, payload);
         settings.clone()
     };
+    if let Some(limit) = merged.max_concurrent_downloads {
+        state.engine.set_max_concurrent_downloads(limit);
+    }
     state
         .engine
         .save_settings(merged)
@@ -375,6 +388,7 @@ fn getInitialState(state: State<'_, AppState>) -> InitialState {
         segment_preset: settings.segment_preset,
         auto_download: settings.auto_download.unwrap_or(true),
         watch_clipboard: settings.watch_clipboard.unwrap_or(true),
+        max_concurrent_downloads: settings.max_concurrent_downloads,
     }
 }
 
@@ -469,6 +483,9 @@ fn merge_settings(current: &mut AppSettings, patch: AppSettings) {
     if patch.watch_clipboard.is_some() {
         current.watch_clipboard = patch.watch_clipboard;
     }
+    if patch.max_concurrent_downloads.is_some() {
+        current.max_concurrent_downloads = patch.max_concurrent_downloads;
+    }
 }
 
 fn is_download_url(url: &str) -> bool {
@@ -550,6 +567,152 @@ fn present_main_window(app: &AppHandle) {
     });
 }
 
+static LAST_POPOVER_SHOW_MS: AtomicU64 = AtomicU64::new(0);
+
+fn toggle_tray_popover(app: &AppHandle, rect: Option<tauri::Rect>) {
+    let app = app.clone();
+    let _ = app.clone().run_on_main_thread(move || {
+        if let Some(popover) = app.get_webview_window("tray-popover") {
+            let is_visible = popover.is_visible().unwrap_or(false);
+            if is_visible {
+                let _ = popover.hide();
+            } else {
+                let scale_factor = popover.scale_factor().unwrap_or(1.0);
+                let popover_w = 320.0;
+                let popover_h = 480.0;
+                let (popover_x, popover_y) = if let Some(r) = rect {
+                    let (rx, ry) = match r.position {
+                        tauri::Position::Physical(p) => {
+                            (p.x as f64 / scale_factor, p.y as f64 / scale_factor)
+                        }
+                        tauri::Position::Logical(p) => (p.x, p.y),
+                    };
+                    let (rw, rh) = match r.size {
+                        tauri::Size::Physical(s) => {
+                            (s.width as f64 / scale_factor, s.height as f64 / scale_factor)
+                        }
+                        tauri::Size::Logical(s) => (s.width, s.height),
+                    };
+                    let center_x = rx + (rw / 2.0);
+                    let mut x = center_x - (popover_w / 2.0);
+                    if let Ok(Some(mon)) = popover.current_monitor() {
+                        let mon_w = mon.size().width as f64 / mon.scale_factor();
+                        if x + popover_w > mon_w - 8.0 {
+                            x = mon_w - popover_w - 8.0;
+                        }
+                    }
+                    x = x.max(8.0);
+                    let y = if ry > 300.0 {
+                        (ry - popover_h - 8.0).max(10.0)
+                    } else {
+                        ry + rh + 4.0
+                    };
+                    (x, y)
+                } else if let Ok(Some(mon)) = popover.primary_monitor() {
+                    let mon_w = mon.size().width as f64 / mon.scale_factor();
+                    ((mon_w - popover_w - 12.0).max(10.0), 32.0)
+                } else {
+                    (800.0, 32.0)
+                };
+
+                let _ = popover.set_size(Size::Logical(LogicalSize::new(popover_w, popover_h)));
+                let _ = popover.set_position(Position::Logical(LogicalPosition::new(
+                    popover_x,
+                    popover_y,
+                )));
+
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                LAST_POPOVER_SHOW_MS.store(now, Ordering::SeqCst);
+
+                let _ = popover.show();
+                let _ = popover.set_focus();
+            }
+        }
+    });
+}
+
+fn update_tray_badge(app: &AppHandle, active_count: usize) {
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        #[cfg(target_os = "macos")]
+        {
+            if active_count > 0 {
+                let _ = tray.set_title(Some(format!(" {active_count}")));
+            } else {
+                let _ = tray.set_title(None::<String>);
+            }
+        }
+        let tooltip = if active_count > 0 {
+            format!("Flexo ({active_count} active)")
+        } else {
+            "Flexo".to_string()
+        };
+        let _ = tray.set_tooltip(Some(tooltip));
+    }
+}
+
+fn setup_tray_popover(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(popover) = app.get_webview_window("tray-popover") {
+        let _ = popover.set_shadow(true);
+        let _ = popover.set_size(Size::Logical(LogicalSize::new(320.0, 480.0)));
+        return Ok(());
+    }
+
+    let _popover = WebviewWindowBuilder::new(
+        app,
+        "tray-popover",
+        WebviewUrl::default(),
+    )
+    .title("Flexo")
+    .inner_size(320.0, 480.0)
+    .decorations(false)
+    .resizable(false)
+    .shadow(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .visible(false)
+    .build()?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn presentMainWindow(app: AppHandle) -> CommandResult<()> {
+    present_main_window(&app);
+    Ok(())
+}
+
+#[tauri::command]
+async fn hideTrayPopover(app: AppHandle) -> CommandResult<()> {
+    if let Some(popover) = app.get_webview_window("tray-popover") {
+        let _ = popover.hide();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn quitApp(app: AppHandle) -> CommandResult<()> {
+    let _ = app.remove_tray_by_id("main-tray");
+    app.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
+async fn getNetworkSpeeds(
+    state: State<'_, AppState>,
+) -> CommandResult<flexo_engine::NetworkSpeedSnapshot> {
+    Ok(state.engine.get_network_speeds().await)
+}
+
+#[tauri::command]
+async fn triggerSpeedTest(
+    state: State<'_, AppState>,
+) -> CommandResult<flexo_engine::NetworkSpeedSnapshot> {
+    Ok(state.engine.test_network_speeds().await)
+}
+
 fn accept_capture(app: AppHandle, mut capture: CaptureRequest) {
     capture.url = capture.url.trim().to_owned();
     capture.file_name = capture_file_name(capture.file_name);
@@ -613,7 +776,6 @@ async fn grab_download(app: &AppHandle, capture: CaptureRequest) -> Result<(), S
     } else {
         interfaces.iter().take(1).collect()
     };
-    let kinds: Vec<_> = selected.iter().map(|iface| iface.kind.clone()).collect();
     let streams = if splittable {
         settings.streams_per_network.unwrap_or(2).clamp(1, 8)
     } else {
@@ -622,14 +784,13 @@ async fn grab_download(app: &AppHandle, capture: CaptureRequest) -> Result<(), S
     let max_block_bytes = settings
         .segment_preset
         .unwrap_or(SegmentPreset::Auto)
-        .bytes()
-        .unwrap_or_else(|| resolve_auto_block_bytes(&kinds));
+        .bytes();
     let plan = plan_download(PlanRequest {
         total_bytes: probe.total_bytes.unwrap_or(0),
         splittable,
         network_count: selected.len(),
         streams_per_network: streams,
-        max_block_bytes: Some(max_block_bytes),
+        max_block_bytes,
     });
     let request = StartDownloadRequest {
         url: probe.final_url,
@@ -646,7 +807,7 @@ async fn grab_download(app: &AppHandle, capture: CaptureRequest) -> Result<(), S
         etag: probe.etag,
         last_modified: probe.last_modified,
         mirror_urls: Vec::new(),
-        max_block_bytes: Some(max_block_bytes),
+        max_block_bytes: Some(plan.block_size_bytes),
     };
     state
         .engine
@@ -837,30 +998,23 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let show = MenuItem::with_id(app, "show", "Open Flexo", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Flexo", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &quit])?;
-
     let mut builder = TrayIconBuilder::with_id("main-tray")
-        .menu(&menu)
-        .tooltip("Flexo")
-        .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "show" => present_main_window(app),
-            "quit" => {
-                let _ = app.remove_tray_by_id("main-tray");
-                app.exit(0);
-            }
-            _ => {}
-        })
+        .tooltip("Flexo");
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.icon_as_template(true);
+    }
+
+    builder = builder
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
-                button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
+                rect,
                 ..
             } = event
             {
-                present_main_window(tray.app_handle());
+                toggle_tray_popover(tray.app_handle(), Some(rect));
             }
         });
 
@@ -978,6 +1132,8 @@ pub fn run() {
             let history_for_updates = history.clone();
             let handle = app.handle().clone();
             let snapshot_engine_dir = data_dir.clone();
+            let speed_handle = handle.clone();
+            let badge_handle = handle.clone();
             let engine = Engine::new(
                 data_dir,
                 Arc::new(move |state| {
@@ -999,9 +1155,42 @@ pub fn run() {
                         },
                     );
                 }),
+                Some(Arc::new(move |snapshot| {
+                    let _ = speed_handle.emit("network:speeds", snapshot);
+                })),
             );
+
+            let badge_engine = engine.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_millis(1500));
+                loop {
+                    interval.tick().await;
+                    let active = badge_engine.get_active().await;
+                    let count = active
+                        .iter()
+                        .filter(|d| d.status == flexo_engine::DownloadStatus::Downloading)
+                        .count();
+                    update_tray_badge(&badge_handle, count);
+                }
+            });
+
+            let bg_engine = engine.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                let _ = bg_engine.test_network_speeds().await;
+
+                let mut interval = tokio::time::interval(Duration::from_secs(20));
+                loop {
+                    interval.tick().await;
+                    let _ = bg_engine.test_network_speeds().await;
+                }
+            });
+
             let settings =
                 tauri::async_runtime::block_on(engine.load_settings()).unwrap_or_default();
+            if let Some(limit) = settings.max_concurrent_downloads {
+                engine.set_max_concurrent_downloads(limit);
+            }
             app.manage(history);
             app.manage(AppState {
                 engine,
@@ -1023,11 +1212,26 @@ pub fn run() {
                     }
                 }
             }
+            setup_tray_popover(app)?;
             setup_tray(app)?;
             native_messaging::register_browser_integrations(app.handle());
             spawn_clipboard_watcher(app.handle().clone());
             spawn_handoff_server(app.handle().clone());
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if window.label() == "tray-popover" {
+                if let WindowEvent::Focused(false) = event {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64;
+                    let last_shown = LAST_POPOVER_SHOW_MS.load(Ordering::SeqCst);
+                    if now.saturating_sub(last_shown) > 500 {
+                        let _ = window.hide();
+                    }
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             listInterfaces,
@@ -1056,7 +1260,12 @@ pub fn run() {
             getQueue,
             enqueueDownload,
             resolveMedia,
-            startMediaDownload
+            startMediaDownload,
+            presentMainWindow,
+            hideTrayPopover,
+            quitApp,
+            getNetworkSpeeds,
+            triggerSpeedTest
         ])
         .run(tauri::generate_context!())
         .expect("error while running Flexo");
