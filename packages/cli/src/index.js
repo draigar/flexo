@@ -12,7 +12,44 @@ const BIN_DIR = path.join(FLEXO_DIR, 'bin');
 export function getPlatformInfo() {
   const platform = os.platform(); // 'darwin', 'win32', 'linux'
   const arch = os.arch(); // 'x64', 'arm64'
-  return { platform, arch };
+  let osName = 'Unknown OS';
+  let trayLocation = 'system tray / menu bar';
+
+  if (platform === 'darwin') {
+    osName = 'macOS';
+    trayLocation = 'top-right macOS Menu Bar';
+  } else if (platform === 'win32') {
+    osName = 'Windows';
+    trayLocation = 'bottom-right Windows Taskbar notification tray';
+  } else if (platform === 'linux') {
+    // Detect Linux Distro
+    let distro = 'Linux';
+    try {
+      if (fs.existsSync('/etc/os-release')) {
+        const releaseContent = fs.readFileSync('/etc/os-release', 'utf8');
+        const nameMatch = releaseContent.match(/^NAME="?([^"\n]+)"?/m);
+        if (nameMatch && nameMatch[1]) {
+          distro = nameMatch[1];
+        }
+      }
+    } catch {
+      // fallback to generic Linux
+    }
+
+    osName = `${distro} (${arch})`;
+
+    if (distro.toLowerCase().includes('fedora') || distro.toLowerCase().includes('red hat') || distro.toLowerCase().includes('rhel')) {
+      trayLocation = 'top-right Fedora GNOME top bar / system tray';
+    } else if (distro.toLowerCase().includes('ubuntu') || distro.toLowerCase().includes('debian')) {
+      trayLocation = 'top-right Ubuntu system indicator area';
+    } else if (distro.toLowerCase().includes('arch') || distro.toLowerCase().includes('manjaro')) {
+      trayLocation = 'system tray / status bar';
+    } else {
+      trayLocation = 'desktop system tray / panel notification area';
+    }
+  }
+
+  return { platform, arch, osName, trayLocation };
 }
 
 export function findInstalledBinary() {
@@ -253,8 +290,11 @@ export async function launchGui(binaryPath) {
 
   if (!target) return false;
 
-  const { platform } = getPlatformInfo();
-  console.log(`\x1b[32m🚀 Launching Flexo...\x1b[0m`);
+  const { platform, osName, trayLocation } = getPlatformInfo();
+
+  console.log(`\n\x1b[36m✔ Detected OS:\x1b[0m \x1b[1m${osName}\x1b[0m`);
+  console.log(`\x1b[33m⚡ Note: Flexo runs in your background tray (${trayLocation}).\x1b[0m`);
+  console.log(`\x1b[32m🚀 Launching Flexo...\x1b[0m\n`);
 
   if (platform === 'darwin' && target.includes('.app')) {
     const appBundle = target.split('.app')[0] + '.app';
