@@ -1,5 +1,5 @@
 import { PRESET_SEGMENT_MB, PRESET_STREAMS, planDownload, segmentPresetToBytes } from '@shared/plan'
-import type { MediaCandidate, ProbeResult, SegmentPreset } from '@shared/types'
+import type { MediaCandidate, ProbeResult, SegmentPreset, StartDownloadRequest } from '@shared/types'
 import { cn } from 'cn'
 import { AlertTriangle, ClipboardPaste, Film, Info, Plus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -114,7 +114,8 @@ export function IdleScreen(): React.JSX.Element {
   }, [url])
 
   const ready = probe.status === 'ready' ? probe.result : null
-  const multiChunkAllowed = ready !== null && ready.supportsRanges && ready.totalBytes !== null
+  const multiChunkAllowed =
+    ready !== null && ready.supportsRanges && ready.totalBytes !== null && ready.totalBytes > 0
   const isSingleStreamOnly = ready !== null && !multiChunkAllowed
 
   const detectedIds = interfaces.map((iface) => iface.id)
@@ -213,7 +214,8 @@ export function IdleScreen(): React.JSX.Element {
     if (probe.status !== 'ready' || !canStart) return
     setStarting(true)
     setStartError(null)
-    const request = {
+    const request: StartDownloadRequest = {
+      kind: 'http',
       url: probe.result.finalUrl,
       destinationDir,
       suggestedFileName: fileNameOverride?.trim() || probe.result.suggestedFileName,
@@ -273,6 +275,7 @@ export function IdleScreen(): React.JSX.Element {
     setStartError(null)
     try {
       const id = await window.flexo.startMediaDownload(candidate.id, {
+        kind: 'http',
         url: candidate.url,
         destinationDir,
         suggestedFileName: fileNameOverride?.trim() || candidate.title || 'video',

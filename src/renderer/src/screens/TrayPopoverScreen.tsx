@@ -1,6 +1,5 @@
 import type { DownloadState, InterfaceSpeedInfo } from '@shared/types'
 import {
-  Activity,
   ArrowDown,
   ArrowUp,
   ExternalLink,
@@ -55,18 +54,16 @@ function getNetworkIcon(kind: string): React.JSX.Element {
 function Sparkline({
   data,
   color,
-  gradientId,
   height = 24,
   width = 110
 }: {
   data: number[]
   color: string
-  gradientId: string
   height?: number
   width?: number
 }): React.JSX.Element {
   const pointsData = data.length < 2 ? [0, ...(data.length === 1 ? data : [0])] : data
-  const maxVal = Math.max(...pointsData, 50_000) // minimum threshold for visibility
+  const maxVal = Math.max(...pointsData, 50_000)
   const step = width / (pointsData.length - 1)
 
   const points = pointsData.map((val, idx) => {
@@ -81,19 +78,13 @@ function Sparkline({
   const lastY = height - (pointsData[pointsData.length - 1] / maxVal) * (height - 6) - 3
 
   return (
-    <div className="relative overflow-hidden rounded bg-[var(--bg-tertiary)]/60 px-1 py-0.5 border border-[var(--border)]/40">
+    <div className="relative overflow-hidden rounded bg-[#1b1e20] px-1 py-0.5 border border-[#2b2f33]">
       <svg
         viewBox={`0 0 ${width} ${height}`}
         className="w-full h-5 block overflow-visible"
         preserveAspectRatio="none"
       >
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.45" />
-            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
-        <path d={areaD} fill={`url(#${gradientId})`} />
+        <path d={areaD} fill={color} fillOpacity="0.12" />
         <path
           d={pathD}
           fill="none"
@@ -105,9 +96,8 @@ function Sparkline({
         <circle
           cx={lastX}
           cy={lastY}
-          r="2"
+          r="1.5"
           fill={color}
-          className="animate-pulse"
         />
       </svg>
     </div>
@@ -217,83 +207,73 @@ export function TrayPopoverScreen(): React.JSX.Element {
   }, [speedInterfaces])
 
   return (
-    <div className="flex h-screen w-[320px] flex-col overflow-hidden bg-[var(--bg-primary)] font-sans text-[var(--text-primary)] select-none border border-[var(--border)] shadow-2xl">
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-[#1b1e20] font-sans text-[#eae7e2] select-none border border-[#2b2f33]">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2.5 bg-[var(--bg-secondary)]/90 backdrop-blur-md">
-        <div className="flex items-center gap-2">
-          <div className="flex size-6 items-center justify-center rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-bold text-[11px]">
-            ⚡
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-xs tracking-wide">FLEXO</span>
-            {downloadingCount > 0 ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-400 border border-emerald-500/30">
-                <span className="size-1 rounded-full bg-emerald-400 animate-pulse" />
-                {downloadingCount} active
-              </span>
-            ) : (
-              <span className="rounded-full bg-[var(--bg-tertiary)] px-1.5 py-0.2 text-[9px] text-[var(--text-muted)] border border-[var(--border)]">
-                Idle
-              </span>
-            )}
+      <div className="flex items-center justify-between border-b border-[#2b2f33] px-3.5 py-3 bg-[#1b1e20] shrink-0">
+        <div className="flex items-center gap-2.5">
+          <img src="/icon.png" alt="Flexo" className="size-5 shrink-0 rounded-[4px] object-contain" />
+          <span className="font-semibold text-[13.5px] tracking-tight text-[#eae7e2]">Flexo</span>
+          <div className="flex items-center gap-1.5 pl-1 font-mono text-[11px] text-[#a9adb2]">
+            <span className="size-1.5 rounded-full bg-[#4ea89a]" />
+            <span>{downloadingCount > 0 ? `${downloadingCount} active` : 'Connected'}</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={handleOpenMain}
-            title="Open Flexo App"
-            className="flex size-6 items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+            title="Open Full App"
+            className="flex size-6 items-center justify-center rounded text-[#8d9196] hover:bg-[#242729] hover:text-[#eae7e2] transition-colors cursor-pointer"
           >
-            <Maximize2 className="size-3" />
+            <Maximize2 className="size-3.5" />
           </button>
           <button
             type="button"
             onClick={handleQuit}
             title="Quit Flexo"
-            className="flex size-6 items-center justify-center rounded text-[var(--text-muted)] hover:bg-red-500/15 hover:text-red-400 transition-colors cursor-pointer"
+            className="flex size-6 items-center justify-center rounded text-[#8d9196] hover:bg-red-500/15 hover:text-red-400 transition-colors cursor-pointer"
           >
-            <Power className="size-3" />
+            <Power className="size-3.5" />
           </button>
           <button
             type="button"
             onClick={handleClose}
-            title="Close menu"
-            className="flex size-6 items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+            title="Close"
+            className="flex size-6 items-center justify-center rounded text-[#8d9196] hover:bg-[#242729] hover:text-[#eae7e2] transition-colors cursor-pointer"
           >
-            <X className="size-3" />
+            <X className="size-3.5" />
           </button>
         </div>
       </div>
 
       {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-2.5 space-y-3">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-3">
         {/* Section 1: Active Downloads */}
         <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#8d9196]">
               Active Downloads ({activeDownloads.length})
             </span>
             {activeDownloads.length > 0 && (
               <button
                 type="button"
                 onClick={handleOpenMain}
-                className="text-[10px] text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+                className="text-[11px] text-[#4ea89a] hover:underline flex items-center gap-1 cursor-pointer font-medium"
               >
                 <span>View all</span>
-                <ExternalLink className="size-2.5" />
+                <ExternalLink className="size-3" />
               </button>
             )}
           </div>
 
           {activeDownloads.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-secondary)]/40 p-3 text-center">
-              <div className="mx-auto mb-1 flex size-7 items-center justify-center rounded-full bg-[var(--bg-tertiary)] text-[var(--text-muted)]">
-                <HardDrive className="size-3.5 opacity-60" />
+            <div className="rounded-lg border border-[#2b2f33] bg-[#202325] p-3 text-center">
+              <div className="mx-auto mb-1.5 flex size-7 items-center justify-center rounded-full bg-[#242729] text-[#8d9196]">
+                <HardDrive className="size-3.5 opacity-70" />
               </div>
-              <p className="text-[11px] font-medium text-[var(--text-primary)]">No active downloads</p>
-              <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
+              <p className="text-[11px] font-medium text-[#eae7e2]">No active downloads</p>
+              <p className="text-[10px] text-[#8d9196] mt-0.5">
                 Copied links or browser downloads appear here
               </p>
             </div>
@@ -308,16 +288,16 @@ export function TrayPopoverScreen(): React.JSX.Element {
                 return (
                   <div
                     key={download.id}
-                    className="rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-2.5 shadow-xs space-y-1.5"
+                    className="rounded-lg border border-[#2b2f33] bg-[#202325] p-2.5 space-y-2"
                   >
                     {/* File row */}
                     <div className="flex items-start justify-between gap-1.5">
                       <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                        <span className="rounded bg-emerald-500/20 px-1 py-0.2 font-mono text-[8px] font-bold text-emerald-300 shrink-0">
+                        <span className="rounded bg-[#242729] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-[#eae7e2] border border-[#3a3f44] shrink-0">
                           {ext}
                         </span>
                         <span
-                          className="truncate text-[11px] font-semibold text-[var(--text-primary)]"
+                          className="truncate text-[11px] font-semibold text-[#eae7e2]"
                           title={download.fileName}
                         >
                           {download.fileName}
@@ -331,7 +311,7 @@ export function TrayPopoverScreen(): React.JSX.Element {
                             type="button"
                             onClick={() => void window.flexo.resumeDownload(download.id)}
                             title="Resume"
-                            className="size-5 flex items-center justify-center rounded hover:bg-[var(--bg-tertiary)] text-emerald-400 cursor-pointer"
+                            className="size-5 flex items-center justify-center rounded hover:bg-[#242729] text-[#4ea89a] cursor-pointer"
                           >
                             <Play className="size-2.5 fill-current" />
                           </button>
@@ -340,7 +320,7 @@ export function TrayPopoverScreen(): React.JSX.Element {
                             type="button"
                             onClick={() => void window.flexo.pauseDownload(download.id)}
                             title="Pause"
-                            className="size-5 flex items-center justify-center rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+                            className="size-5 flex items-center justify-center rounded hover:bg-[#242729] text-[#8d9196] hover:text-[#eae7e2] cursor-pointer"
                           >
                             <Pause className="size-2.5 fill-current" />
                           </button>
@@ -349,23 +329,23 @@ export function TrayPopoverScreen(): React.JSX.Element {
                           type="button"
                           onClick={() => void window.flexo.cancelDownload(download.id)}
                           title="Cancel"
-                          className="size-5 flex items-center justify-center rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-red-400 cursor-pointer"
+                          className="size-5 flex items-center justify-center rounded hover:bg-[#242729] text-[#8d9196] hover:text-red-400 cursor-pointer"
                         >
                           <X className="size-2.5" />
                         </button>
                       </div>
                     </div>
 
-                    {/* Progress Bar */}
-                    <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-tertiary)]">
+                    {/* Progress Bar - Flat, NO gradient */}
+                    <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-[#242729]">
                       <div
-                        className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300"
+                        className="h-full rounded-full bg-[#4ea89a] transition-all duration-300"
                         style={{ width: `${Math.max(2, percent)}%` }}
                       />
                     </div>
 
                     {/* Stats Row */}
-                    <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)] font-mono">
+                    <div className="flex items-center justify-between text-[10px] text-[#8d9196] font-mono">
                       <span>
                         {percent}%
                         {download.totalBytes > 0 && (
@@ -374,7 +354,7 @@ export function TrayPopoverScreen(): React.JSX.Element {
                           </span>
                         )}
                       </span>
-                      <span className="font-semibold text-emerald-400">
+                      <span className="font-semibold text-[#4ea89a]">
                         {isAssembling
                           ? 'Assembling…'
                           : isPaused
@@ -385,10 +365,10 @@ export function TrayPopoverScreen(): React.JSX.Element {
                     </div>
 
                     {/* Multi-network breakdown chips */}
-                    {download.chunks.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1 pt-1 border-t border-[var(--border)]/40">
+                    {'chunks' in download && Array.isArray(download.chunks) && download.chunks.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1 pt-1.5 border-t border-[#2b2f33]">
                         {Array.from(
-                          download.chunks.reduce<Map<string, { label: string; speed: number; kind: string }>>(
+                          (download.chunks as any[]).reduce<Map<string, { label: string; speed: number; kind: string }>>(
                             (acc, chunk) => {
                               const existing = acc.get(chunk.interfaceId)
                               if (existing) {
@@ -404,24 +384,19 @@ export function TrayPopoverScreen(): React.JSX.Element {
                             },
                             new Map()
                           ).entries()
-                        ).map(([ifaceId, data]) => {
+                        ).map(([ifaceId, data]: [string, any]) => {
                           const visual = resolveVisual(ifaceId, data.kind as any, data.label)
                           return (
                             <div
                               key={ifaceId}
-                              className="flex items-center gap-1 rounded px-1 py-0.2 text-[8px] font-mono border"
-                              style={{
-                                background: visual.bg,
-                                borderColor: visual.border,
-                                color: visual.text
-                              }}
+                              className="flex items-center gap-1 rounded bg-[#242729] border border-[#2b2f33] px-1.5 py-0.5 text-[8.5px] font-mono text-[#a9adb2]"
                             >
                               <span
                                 className="size-1 rounded-full"
                                 style={{ background: visual.solid }}
                               />
                               <span className="font-medium">{visual.label}:</span>
-                              <span className="font-bold">{formatSpeed(data.speed)}</span>
+                              <span className="font-bold text-[#eae7e2]">{formatSpeed(data.speed)}</span>
                             </div>
                           )
                         })}
@@ -434,15 +409,15 @@ export function TrayPopoverScreen(): React.JSX.Element {
           )}
         </div>
 
-        {/* Section 2: Network Speeds with Sparklines */}
+        {/* Section 2: Network Speeds with Flat Sparklines */}
         <div>
-          <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#8d9196]">
                 Network Speeds
               </span>
-              <span className="flex items-center gap-1 rounded bg-emerald-500/10 px-1 py-0.2 text-[8px] font-bold text-emerald-400 border border-emerald-500/20">
-                <span className="size-1 rounded-full bg-emerald-400 animate-ping" />
+              <span className="flex items-center gap-1 rounded bg-[#242729] px-1.5 py-0.5 text-[8.5px] font-mono font-medium text-[#4ea89a] border border-[#2b2f33]">
+                <span className="size-1.5 rounded-full bg-[#4ea89a]" />
                 LIVE
               </span>
             </div>
@@ -452,9 +427,9 @@ export function TrayPopoverScreen(): React.JSX.Element {
               onClick={() => void triggerSpeedTest()}
               disabled={isTestingSpeed}
               title="Run instant speed test"
-              className="flex items-center gap-1 text-[10px] text-[var(--text-muted)] hover:text-emerald-400 transition-colors disabled:opacity-50 cursor-pointer"
+              className="flex items-center gap-1 text-[10.5px] text-[#8d9196] hover:text-[#4ea89a] transition-colors disabled:opacity-50 cursor-pointer font-medium"
             >
-              <RefreshCw className={`size-2.5 ${isTestingSpeed ? 'animate-spin text-emerald-400' : ''}`} />
+              <RefreshCw className={`size-2.5 ${isTestingSpeed ? 'animate-spin text-[#4ea89a]' : ''}`} />
               <span>{isTestingSpeed ? 'Testing…' : 'Test Now'}</span>
             </button>
           </div>
@@ -470,7 +445,7 @@ export function TrayPopoverScreen(): React.JSX.Element {
               return (
                 <div
                   key={iface.interfaceId}
-                  className="rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-2 space-y-1.5 transition-all"
+                  className="rounded-lg border border-[#2b2f33] bg-[#202325] p-2.5 space-y-2 transition-all"
                 >
                   {/* Interface Header */}
                   <div className="flex items-center justify-between">
@@ -481,48 +456,47 @@ export function TrayPopoverScreen(): React.JSX.Element {
                       >
                         {getNetworkIcon(iface.kind)}
                       </div>
-                      <span className="font-semibold text-[11px] text-[var(--text-primary)]">
+                      <span className="font-semibold text-[11px] text-[#eae7e2]">
                         {visual.label}
                       </span>
-                      <span className="font-mono text-[9px] text-[var(--text-muted)]">
+                      <span className="font-mono text-[9px] text-[#8d9196]">
                         ({iface.device})
                       </span>
                     </div>
 
                     <div className="flex items-center gap-1">
                       {iface.latencyMs != null && (
-                        <span className="flex items-center gap-0.5 font-mono text-[9px] text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1 py-0.2 rounded border border-[var(--border)]">
+                        <span className="flex items-center gap-0.5 font-mono text-[9px] text-[#a9adb2] bg-[#242729] px-1.5 py-0.5 rounded border border-[#2b2f33]">
                           <Zap className="size-2 text-amber-400" />
                           {iface.latencyMs}ms
                         </span>
                       )}
-                      <span className="text-[8px] uppercase px-1 py-0.2 rounded font-mono font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)]">
+                      <span className="text-[8px] uppercase px-1.5 py-0.5 rounded font-mono font-medium text-[#8d9196] bg-[#242729] border border-[#2b2f33]">
                         {iface.isActiveProbe ? 'Probe' : 'Stream'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Dual Speed Columns with Fancy Sparklines */}
-                  <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-[var(--border)]/40">
+                  {/* Dual Speed Columns with Flat Sparklines */}
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-[#2b2f33]">
                     {/* Download */}
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[10px] font-mono">
-                        <span className="flex items-center gap-0.5 text-emerald-400 font-semibold">
+                        <span className="flex items-center gap-0.5 text-[#4ea89a] font-semibold">
                           <ArrowDown className="size-2.5" />
                           <span>Down</span>
                         </span>
-                        <span className="font-bold text-[10px] text-[var(--text-primary)]">
+                        <span className="font-bold text-[10px] text-[#eae7e2]">
                           {formatBits(iface.downloadBytesPerSec)}
                         </span>
                       </div>
 
                       <Sparkline
                         data={ifaceHistory.download}
-                        color="#10b981"
-                        gradientId={`spark-dl-${iface.interfaceId}`}
+                        color="#4ea89a"
                       />
 
-                      <div className="text-[8px] text-[var(--text-muted)] text-right font-mono">
+                      <div className="text-[8px] text-[#8d9196] text-right font-mono">
                         {formatSpeed(iface.downloadBytesPerSec)}
                       </div>
                     </div>
@@ -530,22 +504,21 @@ export function TrayPopoverScreen(): React.JSX.Element {
                     {/* Upload */}
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[10px] font-mono">
-                        <span className="flex items-center gap-0.5 text-cyan-400 font-semibold">
+                        <span className="flex items-center gap-0.5 text-[#5ec8ff] font-semibold">
                           <ArrowUp className="size-2.5" />
                           <span>Up</span>
                         </span>
-                        <span className="font-bold text-[10px] text-[var(--text-primary)]">
+                        <span className="font-bold text-[10px] text-[#eae7e2]">
                           {formatBits(iface.uploadBytesPerSec)}
                         </span>
                       </div>
 
                       <Sparkline
                         data={ifaceHistory.upload}
-                        color="#06b6d4"
-                        gradientId={`spark-ul-${iface.interfaceId}`}
+                        color="#5ec8ff"
                       />
 
-                      <div className="text-[8px] text-[var(--text-muted)] text-right font-mono">
+                      <div className="text-[8px] text-[#8d9196] text-right font-mono">
                         {formatSpeed(iface.uploadBytesPerSec)}
                       </div>
                     </div>
@@ -557,17 +530,18 @@ export function TrayPopoverScreen(): React.JSX.Element {
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="border-t border-[var(--border)] bg-[var(--bg-secondary)]/90 px-3 py-2 flex items-center justify-between">
+      {/* Subtle footer matching extension popover */}
+      <footer className="flex items-center justify-between px-3.5 py-2 border-t border-[#2b2f33] bg-[#202325] text-[11px] text-[#8d9196] shrink-0">
+        <span className="truncate">Right-click any link › Download with Flexo</span>
         <button
           type="button"
           onClick={handleOpenMain}
-          className="flex-1 py-1 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 font-semibold text-[11px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+          className="text-[#a9adb2] hover:text-[#eae7e2] transition-colors cursor-pointer shrink-0 ml-2"
         >
-          <Activity className="size-3" />
-          <span>Open Full Flexo Window</span>
+          Open App
         </button>
-      </div>
+      </footer>
     </div>
   )
 }
+

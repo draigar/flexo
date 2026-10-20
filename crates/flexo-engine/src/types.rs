@@ -114,9 +114,15 @@ pub struct ChunkState {
     pub hedge: Option<bool>,
 }
 
+fn default_download_kind() -> String {
+    "http".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadState {
+    #[serde(default = "default_download_kind")]
+    pub kind: String,
     pub id: String,
     pub url: String,
     pub file_name: String,
@@ -186,22 +192,48 @@ pub enum ThemeSource {
     Dark,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestHeaders {
+    #[serde(default)]
+    pub referer: Option<String>,
+    #[serde(default)]
+    pub cookies: Option<String>,
+    #[serde(default)]
+    pub user_agent: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartDownloadRequest {
     pub url: String,
     pub destination_dir: PathBuf,
+    #[serde(default)]
     pub suggested_file_name: String,
+    #[serde(default)]
     pub total_bytes: u64,
+    #[serde(default)]
     pub supports_ranges: bool,
+    #[serde(default)]
     pub interface_ids: Vec<String>,
+    #[serde(default)]
     pub chunk_count: usize,
+    #[serde(default, alias = "streamsPerNetwork")]
     pub connections_per_network: Option<usize>,
+    #[serde(default)]
     pub etag: Option<String>,
+    #[serde(default)]
     pub last_modified: Option<String>,
     #[serde(default)]
     pub mirror_urls: Vec<String>,
+    #[serde(default)]
     pub max_block_bytes: Option<u64>,
+    #[serde(default)]
+    pub referer: Option<String>,
+    #[serde(default)]
+    pub cookies: Option<String>,
+    #[serde(default)]
+    pub user_agent: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

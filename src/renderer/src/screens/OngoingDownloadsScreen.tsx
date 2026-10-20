@@ -22,6 +22,7 @@ export function OngoingDownloadsScreen(): React.JSX.Element {
 
   const handleSelectDownload = (id: string): void => {
     setFocusedDownloadId(id)
+    useAppStore.getState().setView({ name: 'download', id })
     setPage('home')
   }
 

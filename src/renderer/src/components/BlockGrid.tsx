@@ -1,4 +1,4 @@
-import type { BlockState, BlockStatus } from '@shared/types'
+import type { BlockState, BlockStatus, TorrentPieceState } from '@shared/types'
 import { useCallback, useRef, useState } from 'react'
 import type { NetworkVisual } from '../theme'
 import { formatBytes, type NetworkGroup } from '../utils/format'
@@ -71,7 +71,8 @@ interface DisplayCell {
  * finishing network's color. `orderedInterfaceIds` fixes the order contributors are listed in, so
  * a square's readout doesn't reshuffle between progress pushes. */
 function describeBlocks(blocks: BlockState[], orderedInterfaceIds: string[]): DisplayCell[] {
-  return blocks.map((block, index) => {
+  const safe = Array.isArray(blocks) ? blocks : []
+  return safe.map((block, index) => {
     const totalBytes = block.rangeEnd !== null ? block.rangeEnd - block.rangeStart + 1 : 0
 
     // Per-network tallies are the accurate source. When a block has none — bytes recorded by an
@@ -143,20 +144,15 @@ function describeContributors(
 }
 
 interface BlockGridProps {
-  blocks?: BlockState[]
+  blocks?: (BlockState | TorrentPieceState)[]
   groups: NetworkGroup[]
   visuals: NetworkVisual[]
   knownSize: boolean
   remainingBytes: number
   isPaused?: boolean
-  /** All blocks are 'completed' by the time this is true — the grid switches from showing which
-   * network fetched each chunk to showing reassembly progress instead: a wipe, in the same
-   * part-file order `reassemble()` actually writes in, that fades a square once its bytes are
-   * safely on disk and pulses whichever one is being appended right now. Without this the grid
-   * would freeze solid the moment the last byte downloads, and assembling a large file can take
-   * long enough that a frozen grid reads as hung rather than finishing up. */
   assembling?: boolean
   assembledBytes?: number
+  pieces?: boolean
 }
 
 export function BlockGrid({
@@ -189,7 +185,7 @@ export function BlockGrid({
     const visualByInterfaceId = new Map<string, NetworkVisual>()
     groups.forEach((g, idx) => {
       if (visuals[idx]) {
-        visualByInterfaceId.set(g.interfaceId, visuals[idx])
+        visualByInterfaceId.set(g.id, visuals[idx])
       }
     })
 
@@ -197,8 +193,8 @@ export function BlockGrid({
     // Squares keep their size and the grid wraps; how many rows that takes is the file's business,
     // not the window's. Only the width decides the wrap, exactly like a paragraph reflowing.
     const cols = Math.min(blocks.length, Math.max(MIN_COLS, fittedCols))
-    const orderedInterfaceIds = groups.map((g) => g.interfaceId)
-    const cells = gridWidth > 0 ? describeBlocks(blocks, orderedInterfaceIds) : []
+    const orderedInterfaceIds = groups.map((g) => g.id)
+    const cells = gridWidth > 0 ? describeBlocks(blocks as any, orderedInterfaceIds) : []
     const chunkBytes =
       blocks[0].rangeEnd !== null ? blocks[0].rangeEnd - blocks[0].rangeStart + 1 : 0
     const rows = Math.ceil(blocks.length / cols)
@@ -244,7 +240,7 @@ export function BlockGrid({
             const visual = visuals[idx]
             return (
               <div
-                key={group.interfaceId}
+                key={group.id}
                 className="flex items-center gap-[5.5px] font-mono text-[10.5px] leading-none font-medium text-[var(--text-secondary)]"
               >
                 <span
@@ -407,7 +403,7 @@ export function BlockGrid({
         <>
           {groups.map((group, index) => (
             <div
-              key={group.interfaceId}
+              key={group.id}
               style={{
                 flex: group.bytesDownloaded || 0.0001,
                 background: visuals[index].solid

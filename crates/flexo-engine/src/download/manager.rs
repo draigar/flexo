@@ -1,5 +1,9 @@
 use crate::{
-    download::{chunk::download_range, part_files, probe::probe_url},
+    download::{
+        chunk::download_range,
+        part_files,
+        probe::probe_url_with_headers,
+    },
     plan::{plan_download, PlanRequest},
     types::*,
     EngineError, Result,
@@ -17,7 +21,7 @@ use uuid::Uuid;
 
 type UpdateCallback = Arc<dyn Fn(DownloadState) + Send + Sync>;
 
-pub const DEFAULT_MAX_CONCURRENT: usize = 6;
+pub const DEFAULT_MAX_CONCURRENT: usize = 4;
 const SPEED_WINDOW_MS: u64 = 3_000;
 const PROGRESS_THROTTLE_MS: u64 = 200;
 const SPEED_TICK_MS: u64 = 500;
@@ -305,6 +309,24 @@ impl DownloadManager {
         Ok(())
     }
 
+    pub async fn relink(&self, id: &str, new_url: &str) -> Result<()> {
+        {
+            let mut requests = self.inner.requests.lock();
+            if let Some(req) = requests.get_mut(id) {
+                req.url = new_url.trim().to_owned();
+            }
+        }
+        {
+            let mut active = self.inner.active.write();
+            let state = active.get_mut(id).ok_or(EngineError::NoActiveDownload)?;
+            state.url = new_url.trim().to_owned();
+            state.status = DownloadStatus::Paused;
+            state.error = None;
+            emit(&self.inner, state.clone());
+        }
+        self.resume(id).await
+    }
+
     pub async fn cancel(&self, id: Option<&str>) -> Result<()> {
         if let Some(id) = id {
             if let Some(cancel) = self.inner.cancels.lock().get(id) {
@@ -420,7 +442,12 @@ async fn run_job(
         }
         _ => {
             // FRESH START PATH: Probe and plan
-            let probe = probe_url(&req.url, None).await?;
+            let req_headers = RequestHeaders {
+                referer: req.referer.clone(),
+                cookies: req.cookies.clone(),
+                user_agent: req.user_agent.clone(),
+            };
+            let probe = probe_url_with_headers(&req.url, Some(&req_headers), None).await?;
             let file_name = sanitize_file_name(if req.suggested_file_name.is_empty() {
                 &probe.suggested_file_name
             } else {
@@ -458,13 +485,21 @@ async fn run_job(
                 interface_addresses
             };
             let total_bytes = probe.total_bytes.unwrap_or(req.total_bytes);
+            let splittable = probe.supports_ranges && req.supports_ranges && total_bytes > 0;
             let plan = plan_download(PlanRequest {
                 total_bytes,
-                splittable: probe.supports_ranges && req.supports_ranges,
+                splittable,
                 network_count: interfaces.len(),
                 streams_per_network: req
                     .connections_per_network
-                    .unwrap_or_else(|| req.chunk_count.div_ceil(interfaces.len()).max(1)),
+                    .unwrap_or_else(|| {
+                        let iface_count = interfaces.len().max(1);
+                        if req.chunk_count > 0 {
+                            req.chunk_count.div_ceil(iface_count).max(1)
+                        } else {
+                            2
+                        }
+                    }),
                 max_block_bytes: req.max_block_bytes,
             });
             let blocks: Vec<_> = (0..plan.block_count)
@@ -587,6 +622,7 @@ async fn run_job(
     }
 
     let state = DownloadState {
+        kind: "http".into(),
         id: id.clone(),
         url: req.url.clone(),
         file_name,
@@ -693,12 +729,18 @@ async fn run_job(
                 let path = part_files::part_file(&parts_dir, &id, index);
                 let mut last_position = initial_block_bytes;
                 let id_for_progress = id.clone();
+                let block_headers = RequestHeaders {
+                    referer: req.referer.clone(),
+                    cookies: req.cookies.clone(),
+                    user_agent: req.user_agent.clone(),
+                };
                 download_range(
                     source,
                     start,
                     end,
                     &path,
                     local_address,
+                    Some(&block_headers),
                     cancel.clone(),
                     |position| {
                         let delta = position.saturating_sub(last_position);
@@ -838,11 +880,16 @@ fn is_transient_error(error: &EngineError) -> bool {
         // HTTP errors – check the status code
         EngineError::Http(e) => {
             if let Some(status) = e.status() {
+                // 416 Range Not Satisfiable, 410 Gone, 403 Forbidden, 401 Unauthorized -> dead link, NOT retryable
+                if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE
+                    || status == reqwest::StatusCode::GONE
+                    || status == reqwest::StatusCode::FORBIDDEN
+                    || status == reqwest::StatusCode::UNAUTHORIZED
+                {
+                    return false;
+                }
                 // 429 Too Many Requests, 5xx server errors -> retryable
-                // 404 Not Found (expired token) -> retryable
-                // 403 Forbidden, 401 Unauthorized -> NOT retryable
                 status == reqwest::StatusCode::TOO_MANY_REQUESTS
-                    || status == reqwest::StatusCode::NOT_FOUND
                     || status.is_server_error()
             } else {
                 // No status code -> network-level error (connection reset, timeout) -> retryable
@@ -1065,6 +1112,7 @@ async fn run_torrent_job(
     };
 
     let mut state = DownloadState {
+        kind: "http".into(),
         id: id.clone(),
         url: req.url.clone(),
         file_name,
@@ -1115,7 +1163,7 @@ mod tests {
         let temp_dir = std::env::temp_dir().join(format!("flexo_mgr_test_{}", uuid::Uuid::new_v4()));
         let manager = DownloadManager::new(temp_dir.clone(), Arc::new(|_| {}));
         assert_eq!(manager.get_max_concurrent(), DEFAULT_MAX_CONCURRENT);
-        assert_eq!(manager.get_max_concurrent(), 6);
+        assert_eq!(manager.get_max_concurrent(), 4);
 
         manager.set_max_concurrent(100);
         assert_eq!(manager.get_max_concurrent(), 100);
@@ -1140,6 +1188,7 @@ mod tests {
         for i in 0..2 {
             let active_id = format!("active_{i}");
             let dummy_state = DownloadState {
+                kind: "http".into(),
                 id: active_id.clone(),
                 url: format!("https://example.com/active_{i}.mp4"),
                 file_name: format!("active_{i}.mp4"),
@@ -1177,6 +1226,9 @@ mod tests {
                 last_modified: None,
                 mirror_urls: vec![],
                 max_block_bytes: None,
+                referer: None,
+                cookies: None,
+                user_agent: None,
             };
             manager.enqueue(req).await.unwrap();
         }

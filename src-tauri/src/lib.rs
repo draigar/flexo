@@ -34,10 +34,41 @@ use tokio::{
 
 type CommandResult<T> = Result<T, String>;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserCookie {
+    pub name: String,
+    pub value: String,
+    pub domain: String,
+    pub host_only: bool,
+    pub path: String,
+    pub secure: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserContext {
+    pub cookies: Vec<BrowserCookie>,
+    pub referer: Option<String>,
+    pub user_agent: Option<String>,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BridgeAddRequest {
+    pub url: String,
+    pub browser: Option<BrowserContext>,
+    pub page_url: Option<String>,
+    pub min_bytes: Option<u64>,
+    pub file_name: Option<String>,
+}
+
 struct AppState {
     engine: Engine,
     settings: RwLock<AppSettings>,
     media: Mutex<HashMap<String, MediaCandidate>>,
+    pending_handoffs: Mutex<HashMap<String, (BridgeAddRequest, std::time::Instant)>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -166,9 +197,45 @@ async fn updateSettings(
     Ok(())
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum ProbeUrlPayload {
+    Url(String),
+    WithOptions {
+        url: String,
+        #[serde(default)]
+        referer: Option<String>,
+        #[serde(default)]
+        cookies: Option<String>,
+        #[serde(default)]
+        user_agent: Option<String>,
+    },
+}
+
 #[tauri::command]
-async fn probeUrl(state: State<'_, AppState>, payload: String) -> CommandResult<ProbeResult> {
-    state.engine.probe_url(payload).await.map_err(error_string)
+async fn probeUrl(
+    state: State<'_, AppState>,
+    payload: ProbeUrlPayload,
+) -> CommandResult<ProbeResult> {
+    let (url, referer, cookies, user_agent) = match payload {
+        ProbeUrlPayload::Url(u) => (u, None, None, None),
+        ProbeUrlPayload::WithOptions {
+            url,
+            referer,
+            cookies,
+            user_agent,
+        } => (url, referer, cookies, user_agent),
+    };
+    let headers = flexo_engine::RequestHeaders {
+        referer,
+        cookies,
+        user_agent,
+    };
+    state
+        .engine
+        .probe_url_with_headers(&url, Some(&headers))
+        .await
+        .map_err(error_string)
 }
 
 #[tauri::command]
@@ -212,6 +279,13 @@ fn existing_directory(path: &str) -> Option<PathBuf> {
 #[tauri::command]
 fn readClipboardText(app: AppHandle) -> CommandResult<String> {
     app.clipboard().read_text().map_err(error_string)
+}
+
+#[tauri::command]
+fn openPath(app: AppHandle, payload: String) -> CommandResult<()> {
+    app.opener()
+        .open_path(payload, None::<&str>)
+        .map_err(error_string)
 }
 
 #[tauri::command]
@@ -263,6 +337,9 @@ async fn startSimulatedDownload(
         last_modified: None,
         mirror_urls: Vec::new(),
         max_block_bytes: None,
+        referer: None,
+        cookies: None,
+        user_agent: None,
     };
     state
         .engine
@@ -289,6 +366,15 @@ async fn pauseDownload(state: State<'_, AppState>, payload: String) -> CommandRe
 #[tauri::command]
 async fn resumeDownload(state: State<'_, AppState>, payload: String) -> CommandResult<()> {
     state.engine.resume(payload).await.map_err(error_string)
+}
+
+#[tauri::command]
+async fn relinkDownload(
+    state: State<'_, AppState>,
+    id: String,
+    url: String,
+) -> CommandResult<()> {
+    state.engine.relink(id, url).await.map_err(error_string)
 }
 
 #[tauri::command]
@@ -556,9 +642,32 @@ fn capture_from_link(link: &str) -> Option<CaptureRequest> {
     })
 }
 
+#[cfg(target_os = "macos")]
+fn set_macos_dock_icon() {
+    use objc2::AnyThread;
+    use objc2_app_kit::{NSApplication, NSImage};
+    use objc2_foundation::{MainThreadMarker, NSData};
+
+    if let Some(mtm) = MainThreadMarker::new() {
+        let ns_app = NSApplication::sharedApplication(mtm);
+        let icon_bytes = include_bytes!("../icons/icon.png");
+        let data = NSData::with_bytes(icon_bytes);
+        if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
+            unsafe {
+                ns_app.setApplicationIconImage(Some(&image));
+            }
+        }
+    }
+}
+
 fn present_main_window(app: &AppHandle) {
     let app = app.clone();
     let _ = app.clone().run_on_main_thread(move || {
+        #[cfg(target_os = "macos")]
+        {
+            let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+            set_macos_dock_icon();
+        }
         if let Some(window) = app.get_webview_window("main") {
             let _ = window.unminimize();
             let _ = window.show();
@@ -770,7 +879,7 @@ async fn grab_download(app: &AppHandle, capture: CaptureRequest) -> Result<(), S
     if interfaces.is_empty() {
         return Err("No network connections are available".to_owned());
     }
-    let splittable = probe.supports_ranges && probe.total_bytes.is_some();
+    let splittable = probe.supports_ranges && probe.total_bytes.is_some_and(|len| len > 0);
     let selected: Vec<&NetworkInterfaceInfo> = if splittable {
         interfaces.iter().collect()
     } else {
@@ -808,6 +917,9 @@ async fn grab_download(app: &AppHandle, capture: CaptureRequest) -> Result<(), S
         last_modified: probe.last_modified,
         mirror_urls: Vec::new(),
         max_block_bytes: Some(plan.block_size_bytes),
+        referer: None,
+        cookies: None,
+        user_agent: None,
     };
     state
         .engine
@@ -885,13 +997,26 @@ fn spawn_clipboard_watcher(app: AppHandle) {
 
 fn spawn_handoff_server(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let listener = match TcpListener::bind("127.0.0.1:17890").await {
-            Ok(listener) => listener,
-            Err(error) => {
-                eprintln!("Flexo capture server failed to listen on 127.0.0.1:17890: {error}");
-                return;
+        let ports = [19288, 19289, 19290, 17890];
+        let mut bound_listener = None;
+        let mut bound_port = 0;
+        for port in ports {
+            match TcpListener::bind(format!("127.0.0.1:{port}")).await {
+                Ok(listener) => {
+                    bound_listener = Some(listener);
+                    bound_port = port;
+                    break;
+                }
+                Err(error) => {
+                    eprintln!("Flexo bridge server: port {port} unavailable: {error}");
+                }
             }
+        }
+        let Some(listener) = bound_listener else {
+            eprintln!("Flexo bridge server failed to listen on any port in 19288..19290 or 17890");
+            return;
         };
+        eprintln!("Flexo bridge server listening on 127.0.0.1:{bound_port}");
         while let Ok((stream, _)) = listener.accept().await {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
@@ -943,7 +1068,73 @@ async fn handle_handoff(mut stream: TcpStream, app: AppHandle) -> CommandResult<
         .to_owned();
     let body = &bytes[body_start..bytes.len().min(body_start + content_length)];
     if request_line.starts_with("OPTIONS ") {
-        let response = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: POST, OPTIONS\r\nAccess-Control-Allow-Headers: content-type\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        let response = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: content-type\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        return stream
+            .write_all(response.as_bytes())
+            .await
+            .map_err(error_string);
+    }
+    if request_line.starts_with("GET /ping ") {
+        let payload = r#"{"app":"flexo","version":"0.3.0","api":1}"#;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+            payload.len()
+        );
+        return stream
+            .write_all(response.as_bytes())
+            .await
+            .map_err(error_string);
+    }
+    if request_line.starts_with("POST /add ") {
+        let (status, payload) = match serde_json::from_slice::<BridgeAddRequest>(body) {
+            Ok(request) => {
+                if is_download_url(&request.url) {
+                    let token = uuid::Uuid::new_v4().to_string();
+                    {
+                        let state = app.state::<AppState>();
+                        let mut handoffs = state.pending_handoffs.lock();
+                        handoffs.retain(|_, (_, created)| created.elapsed().as_secs() < 30);
+                        handoffs.insert(token.clone(), (request, std::time::Instant::now()));
+                    }
+                    ("200 OK", serde_json::to_string(&serde_json::json!({ "token": token })).unwrap_or_default())
+                } else {
+                    ("422 Unprocessable Entity", r#"{"error":"invalid url"}"#.to_owned())
+                }
+            }
+            Err(e) => ("400 Bad Request", serde_json::to_string(&serde_json::json!({ "error": e.to_string() })).unwrap_or_default()),
+        };
+        let response = format!(
+            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+            payload.len()
+        );
+        return stream
+            .write_all(response.as_bytes())
+            .await
+            .map_err(error_string);
+    }
+    if request_line.starts_with("POST /confirm ") {
+        let (status, payload) = match serde_json::from_slice::<serde_json::Value>(body) {
+            Ok(json) => {
+                let token = json.get("token").and_then(|t| t.as_str());
+                let handoff = token.and_then(|t| {
+                    let state = app.state::<AppState>();
+                    let mut handoffs = state.pending_handoffs.lock();
+                    handoffs.remove(t)
+                });
+                if let Some((request, _)) = handoff {
+                    present_main_window(&app);
+                    let _ = app.emit("bridge:add", request.clone());
+                    ("200 OK", r#"{"ok":true}"#.to_owned())
+                } else {
+                    ("404 Not Found", r#"{"error":"token expired or not found"}"#.to_owned())
+                }
+            }
+            Err(e) => ("400 Bad Request", serde_json::to_string(&serde_json::json!({ "error": e.to_string() })).unwrap_or_default()),
+        };
+        let response = format!(
+            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+            payload.len()
+        );
         return stream
             .write_all(response.as_bytes())
             .await
@@ -969,6 +1160,13 @@ async fn handle_handoff(mut stream: TcpStream, app: AppHandle) -> CommandResult<
                         candidates
                     }
                 };
+                {
+                    let state = app.state::<AppState>();
+                    let mut media = state.media.lock();
+                    for candidate in &candidates {
+                        media.insert(candidate.id.clone(), candidate.clone());
+                    }
+                }
                 app.emit("media:candidates", candidates)
                     .map_err(error_string)
             })
@@ -1007,20 +1205,22 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     builder = builder
-        .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click {
+        .on_tray_icon_event(|tray, event| match event {
+            TrayIconEvent::Click {
                 button_state: MouseButtonState::Up,
                 rect,
                 ..
-            } = event
-            {
+            } => {
                 toggle_tray_popover(tray.app_handle(), Some(rect));
             }
+            TrayIconEvent::DoubleClick { .. } => {
+                present_main_window(tray.app_handle());
+            }
+            _ => {}
         });
 
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
-    }
+    let tray_icon = tauri::include_image!("icons/tray-icon.png");
+    builder = builder.icon(tray_icon);
 
     builder.build(app)?;
     Ok(())
@@ -1116,6 +1316,10 @@ pub fn run() {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = window.hide();
+                    #[cfg(target_os = "macos")]
+                    {
+                        let _ = window.app_handle().set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    }
                 }
             }
         })
@@ -1126,6 +1330,10 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            {
+                let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            }
             let data_dir = app.path().app_data_dir().map_err(error_string)?;
             std::fs::create_dir_all(&data_dir).map_err(error_string)?;
             let history = history::HistoryDb::open(&data_dir.join("downloads.db"))?;
@@ -1196,24 +1404,33 @@ pub fn run() {
                 engine,
                 settings: RwLock::new(settings),
                 media: Mutex::new(HashMap::new()),
+                pending_handoffs: Mutex::new(HashMap::new()),
             });
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {
                 for url in event.urls() {
-                    if let Some(capture) = capture_from_link(url.as_str()) {
+                    if url.as_str().starts_with("flexo://open") {
+                        present_main_window(&handle);
+                    } else if let Some(capture) = capture_from_link(url.as_str()) {
                         accept_capture(handle.clone(), capture);
                     }
                 }
             });
             if let Ok(Some(urls)) = app.deep_link().get_current() {
                 for url in urls {
-                    if let Some(capture) = capture_from_link(url.as_str()) {
+                    if url.as_str().starts_with("flexo://open") {
+                        present_main_window(app.handle());
+                    } else if let Some(capture) = capture_from_link(url.as_str()) {
                         accept_capture(app.handle().clone(), capture);
                     }
                 }
             }
             setup_tray_popover(app)?;
             setup_tray(app)?;
+            #[cfg(target_os = "macos")]
+            {
+                set_macos_dock_icon();
+            }
             native_messaging::register_browser_integrations(app.handle());
             spawn_clipboard_watcher(app.handle().clone());
             spawn_handoff_server(app.handle().clone());
@@ -1246,6 +1463,7 @@ pub fn run() {
             listDownloadHistory,
             removeDownloadHistory,
             readClipboardText,
+            openPath,
             revealInFolder,
             startDownload,
             startSimulatedDownload,
@@ -1253,6 +1471,7 @@ pub fn run() {
             getActiveDownloads,
             pauseDownload,
             resumeDownload,
+            relinkDownload,
             cancelDownload,
             removeDownload,
             checkForUpdate,

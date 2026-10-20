@@ -5,13 +5,17 @@ import type {
   AppSettings,
   DownloadRecord,
   DownloadState,
+  FinishedDownload,
   InitialState,
   MediaCandidate,
   NetworkSpeedSnapshot,
+  PendingLink,
+  ProbeUrlPayload,
   QueueItem,
   StartDownloadRequest,
   StartSimulatedDownloadRequest
 } from '@shared/types'
+import type { BridgeAddRequest } from '@shared/browserBridge'
 
 const fallbackInitialState: InitialState = {
   homeDir: '',
@@ -19,6 +23,10 @@ const fallbackInitialState: InitialState = {
   isDev: import.meta.env.DEV,
   themeSource: 'dark',
   networkPreferences: {},
+  downloadsAtOnce: 2,
+  slowMode: false,
+  slowModeSpeed: 2 * 1024 ** 2,
+  speedUnit: 'bytes',
   streamsPerNetwork: 2,
   segmentPreset: 'auto',
   autoDownload: true,
@@ -56,15 +64,45 @@ export const flexoApi = {
     invoke<IpcContract['deviceBindingSupported']['result']>('deviceBindingSupported'),
   openNetworkSettings: () => invoke<void>('openNetworkSettings'),
   updateSettings: (patch: AppSettings) => invoke<void>('updateSettings', { payload: patch }),
-  probeUrl: (url: string) =>
-    invoke<IpcContract['probeUrl']['result']>('probeUrl', { payload: url }),
+  probeUrl: (payload: ProbeUrlPayload) =>
+    invoke<IpcContract['probeUrl']['result']>('probeUrl', { payload }),
   chooseDestinationFolder: (defaultPath: string) =>
     invoke<string | null>('chooseDestinationFolder', { payload: defaultPath }),
   chooseSourceFile: () => invoke<string | null>('chooseSourceFile'),
   readClipboardText: () => invoke<string>('readClipboardText'),
+  openPath: (filePath: string) => invoke<void>('openPath', { payload: filePath }),
   revealInFolder: (filePath: string) => invoke<void>('revealInFolder', { payload: filePath }),
   revealCaptureExtension: () => invoke<void>('revealCaptureExtension'),
   listDownloadHistory: () => invoke<DownloadRecord[]>('listDownloadHistory'),
+  listHistory: async (): Promise<FinishedDownload[]> => {
+    const records = await invoke<DownloadRecord[]>('listDownloadHistory').catch(() => [])
+    return records.map((rec) => ({
+      id: rec.id,
+      url: rec.url,
+      fileName: rec.fileName,
+      filePath: rec.destinationPath,
+      destinationPath: rec.destinationPath,
+      totalBytes: rec.totalBytes,
+      bytesDownloaded: rec.totalBytes,
+      speedBytesPerSec: 0,
+      status: 'completed' as const,
+      startedAt: rec.startedAt,
+      completedAt: rec.completedAt,
+      kind: 'http' as const,
+      networks: [],
+      peakStreams: 1,
+      totalBlocks: 1,
+      blockSizeBytes: rec.totalBytes,
+      unitsWritten: 1
+    }))
+  },
+  listDownloads: async (): Promise<DownloadState[]> => {
+    return invoke<DownloadState[]>('getActiveDownloads').catch(() => [])
+  },
+  pendingLinks: async (): Promise<PendingLink[]> => {
+    return []
+  },
+  dismissLink: async (_id: string): Promise<void> => {},
   removeDownloadHistory: (id: string) => invoke<void>('removeDownloadHistory', { payload: id }),
   startDownload: (request: StartDownloadRequest) =>
     invoke<string>('startDownload', { payload: request }),
@@ -74,8 +112,14 @@ export const flexoApi = {
   getActiveDownloads: () => invoke<DownloadState[]>('getActiveDownloads'),
   pauseDownload: (downloadId: string) => invoke<void>('pauseDownload', { payload: downloadId }),
   resumeDownload: (downloadId: string) => invoke<void>('resumeDownload', { payload: downloadId }),
+  relinkDownload: (downloadId: string, url: string) =>
+    invoke<void>('relinkDownload', { id: downloadId, url }),
   cancelDownload: (downloadId: string) => invoke<void>('cancelDownload', { payload: downloadId }),
   removeDownload: (downloadId: string) => invoke<void>('removeDownload', { payload: downloadId }),
+  setDownloadNetwork: async (_downloadId: string, _networkId: string, _enabled: boolean): Promise<void> => {},
+  resetNetworkUsage: async (_id: string): Promise<void> => {},
+  torrentFiles: async (_downloadId: string): Promise<any[]> => [],
+  chooseTorrentFiles: async (_downloadId: string, _indices: number[]): Promise<void> => {},
   checkForUpdate: () => invoke<IpcContract['checkForUpdate']['result']>('checkForUpdate'),
 
   getQueue: () => invoke<QueueItem[]>('getQueue'),
@@ -111,6 +155,14 @@ export const flexoApi = {
     return () => unlisten?.()
   },
 
+  onHistoryChanged: (callback: () => void): (() => void) => {
+    let unlisten: UnlistenFn | undefined
+    void listen('history:updated', () => callback()).then((fn) => {
+      unlisten = fn
+    })
+    return () => unlisten?.()
+  },
+
   onCaptureFailed: (
     callback: (failure: { url: string; message: string }) => void
   ): (() => void) => {
@@ -126,6 +178,14 @@ export const flexoApi = {
   onClipboardUrl: (callback: (url: string) => void): (() => void) => {
     let unlisten: UnlistenFn | undefined
     void listen<string>('clipboard:url', (event) => callback(event.payload)).then((fn) => {
+      unlisten = fn
+    })
+    return () => unlisten?.()
+  },
+
+  onBridgeAdd: (callback: (request: BridgeAddRequest) => void): (() => void) => {
+    let unlisten: UnlistenFn | undefined
+    void listen<BridgeAddRequest>('bridge:add', (event) => callback(event.payload)).then((fn) => {
       unlisten = fn
     })
     return () => unlisten?.()

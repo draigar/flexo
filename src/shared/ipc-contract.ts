@@ -4,6 +4,7 @@ import type {
   MediaCandidate,
   NetworkInterfaceInfo,
   ProbeResult,
+  ProbeUrlPayload,
   QueueItem,
   StartDownloadRequest,
   StartSimulatedDownloadRequest,
@@ -18,7 +19,7 @@ export interface IpcContract {
   deviceBindingSupported: { args: []; result: boolean }
   openNetworkSettings: { args: []; result: void }
   updateSettings: { args: [patch: AppSettings]; result: void }
-  probeUrl: { args: [url: string]; result: ProbeResult }
+  probeUrl: { args: [payload: ProbeUrlPayload]; result: ProbeResult }
   chooseDestinationFolder: { args: [defaultPath: string]; result: string | null }
   chooseSourceFile: { args: []; result: string | null }
   readClipboardText: { args: []; result: string }

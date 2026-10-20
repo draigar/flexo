@@ -3,7 +3,7 @@ import { useAppStore } from '../store/useAppStore'
 
 /** Subscribes once to download, queue, clipboard, and media events for the app lifetime. */
 export function useDownloadEvents(): void {
-  const setCurrentDownload = useAppStore((store) => store.setCurrentDownload)
+  const receiveDownloadUpdate = useAppStore((store) => store.receiveDownloadUpdate)
   const setQueue = useAppStore((store) => store.setQueue)
   const setDraftUrl = useAppStore((store) => store.setDraftUrl)
   const setCaptureError = useAppStore((store) => store.setCaptureError)
@@ -12,7 +12,9 @@ export function useDownloadEvents(): void {
 
   useEffect(() => {
     let disposed = false
-    const unsubDownload = window.flexo.onDownloadUpdated(setCurrentDownload)
+    const unsubDownload = window.flexo.onDownloadUpdated((update) => {
+      receiveDownloadUpdate(update)
+    })
     const unsubQueue = window.flexo.onQueueUpdated(setQueue)
     const unsubClipboard = window.flexo.onClipboardUrl((url) => {
       setDraftUrl(url)
@@ -30,7 +32,7 @@ export function useDownloadEvents(): void {
       .getActiveDownloads()
       .then((downloads) => {
         if (!disposed && downloads) {
-          downloads.forEach(setCurrentDownload)
+          downloads.forEach(receiveDownloadUpdate)
         }
       })
       .catch(() => {})
@@ -58,5 +60,5 @@ export function useDownloadEvents(): void {
       unsubMedia()
       unsubSpeeds()
     }
-  }, [setCurrentDownload, setQueue, setDraftUrl, setCaptureError, setMediaCandidates, setNetworkSpeeds])
+  }, [receiveDownloadUpdate, setQueue, setDraftUrl, setCaptureError, setMediaCandidates, setNetworkSpeeds])
 }

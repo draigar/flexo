@@ -47,7 +47,7 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      - name: Install system dependencies (Ubuntu only)
+      - name: Install system dependencies (Ubuntu/Debian)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
@@ -67,3 +67,54 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+  publish-tauri-fedora:
+    name: Build & Publish (Fedora 41 / RPM)
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+    container:
+      image: fedora:41
+    steps:
+      - name: Install base tooling
+        run: |
+          dnf install -y \
+            git \
+            curl \
+            file \
+            gcc \
+            gcc-c++ \
+            make \
+            webkit2gtk4.1-devel \
+            libappindicator-gtk3-devel \
+            librsvg2-devel \
+            patchelf \
+            openssl-devel \
+            nodejs \
+            npm
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and publish Tauri release (RPM)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name || inputs.tag }}
+          releaseName: 'Flexo ${{ github.ref_name || inputs.tag }}'
+          releaseBody: 'See [CHANGELOG.md](https://github.com/draigar/flexo/blob/main/CHANGELOG.md) for detailed notes.'
+          releaseDraft: false
+          prerelease: false
+          args: '--bundles rpm'

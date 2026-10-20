@@ -5,6 +5,7 @@ import type { NetworkInterfaceKind, NetworkPreference, NetworkPreferences } from
  *  bone-coral — same connection hues, coral as the action color, paper surfaces.
  *  ink-violet — Wi-Fi violet, Ethernet lime, USB coral, bridge sky, other gold. */
 export const ACTIVE_CONCEPT = 'ink-violet' as const
+export const TITLE_BAR_HEIGHT = 44
 
 interface KindPalette {
   solid: string
@@ -126,7 +127,7 @@ export function assignNetworkColors(
   }
 
   for (const id of ids) {
-    const pinned = preferences[id]?.colorId
+    const pinned = preferences[id]?.colorId ?? (preferences[id]?.color as NetworkColorId | undefined)
     if (isValidNetworkColorId(pinned)) take(id, pinned)
   }
   for (const id of ids) {
@@ -150,7 +151,11 @@ export function resolveNetworkVisual(
   preference: NetworkPreference | undefined,
   colorId: NetworkColorId
 ): NetworkVisual {
-  const name = preference?.customName?.trim() || fallbackName
+  const name =
+    preference?.customName?.trim() ||
+    preference?.name?.trim() ||
+    preference?.displayName?.trim() ||
+    fallbackName
   const kindPalette = KIND_PALETTE[kind]
   const swatch = NETWORK_COLOR_SWATCHES.find((entry) => entry.id === colorId)!
 

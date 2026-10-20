@@ -48,7 +48,7 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      - name: Install system dependencies (Ubuntu only)
+      - name: Install system dependencies (Ubuntu/Debian)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
@@ -71,3 +71,57 @@ jobs:
           releaseDraft: false
           prerelease: true
           args: ${{ matrix.args }}
+
+  build-and-release-fedora:
+    name: Build & Package (Fedora 41 / RPM)
+    runs-on: ubuntu-22.04
+    container:
+      image: fedora:41
+    steps:
+      - name: Install base tooling
+        run: |
+          dnf install -y \
+            git \
+            curl \
+            file \
+            gcc \
+            gcc-c++ \
+            make \
+            webkit2gtk4.1-devel \
+            libappindicator-gtk3-devel \
+            librsvg2-devel \
+            patchelf \
+            openssl-devel \
+            nodejs \
+            npm
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri App (RPM)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: continuous
+          releaseName: 'Continuous Build (${{ github.sha }})'
+          releaseBody: |
+            Automated continuous release for commit ${{ github.sha }}.
+
+            Built automatically on push to `main`.
+          releaseDraft: false
+          prerelease: true
+          args: '--bundles rpm'

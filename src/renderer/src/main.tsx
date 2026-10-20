@@ -34,10 +34,13 @@ async function main(): Promise<void> {
   }
 
   const { default: App } = await import('./App')
+  const { ErrorBoundary } = await import('./components/ErrorBoundary')
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </StrictMode>
   )
 }

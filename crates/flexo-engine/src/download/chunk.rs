@@ -19,6 +19,7 @@ pub async fn download_range(
     end: u64,
     part_path: &Path,
     local_address: Option<IpAddr>,
+    headers: Option<&crate::types::RequestHeaders>,
     cancel: CancellationToken,
     mut on_progress: impl FnMut(u64) + Send,
 ) -> Result<u64> {
@@ -67,8 +68,26 @@ pub async fn download_range(
         let req_start = start + current_len;
         let req_end = end;
 
-        let response = match send_get(url, local_address, |request| {
-            request.header(RANGE, format!("bytes={req_start}-{req_end}"))
+        let response = match send_get(url, local_address, |mut request| {
+            request = request.header(RANGE, format!("bytes={req_start}-{req_end}"));
+            if let Some(h) = headers {
+                if let Some(ref referer) = h.referer {
+                    if !referer.is_empty() {
+                        request = request.header(reqwest::header::REFERER, referer);
+                    }
+                }
+                if let Some(ref cookies) = h.cookies {
+                    if !cookies.is_empty() {
+                        request = request.header(reqwest::header::COOKIE, cookies);
+                    }
+                }
+                if let Some(ref ua) = h.user_agent {
+                    if !ua.is_empty() {
+                        request = request.header(reqwest::header::USER_AGENT, ua);
+                    }
+                }
+            }
+            request
         })
         .await
         {

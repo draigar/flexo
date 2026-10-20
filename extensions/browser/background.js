@@ -113,34 +113,71 @@ chrome.downloads.onCreated.addListener((item) => {
   void takeDownload(item)
 })
 
+const tabStreams = new Map()
+
 chrome.webRequest.onCompleted.addListener(
   (details) => {
     if (details.type !== 'media' && !MEDIA_HINT.test(details.url)) return
-    const body = {
-      candidates: [
-        {
-          id: `${Date.now()}-${details.requestId}`,
-          url: details.url,
-          kind: details.url.includes('.m3u8')
-            ? 'hls'
-            : details.url.includes('.mpd')
-              ? 'dash'
-              : 'progressive',
-          mimeType: details.responseHeaders?.find(
-            (header) => header.name.toLowerCase() === 'content-type'
-          )?.value,
-          drm: false
-        }
-      ]
+    const candidate = {
+      id: `${Date.now()}-${details.requestId}`,
+      url: details.url,
+      kind: details.url.includes('.m3u8')
+        ? 'hls'
+        : details.url.includes('.mpd')
+          ? 'dash'
+          : 'progressive',
+      mimeType: details.responseHeaders?.find(
+        (header) => header.name.toLowerCase() === 'content-type'
+      )?.value,
+      drm: false
     }
+
+    const body = {
+      candidates: [candidate]
+    }
+
+    // Register with Flexo engine in background so candidate ID is valid
     void (async () => {
       let accepted = await sendViaNativeMessaging(body)
       if (!accepted) void postJson(FLEXO_MEDIA, body)
     })()
+
+    // Also notify active tab's content script to display the ribbon/balloon widget
+    if (details.tabId && details.tabId >= 0) {
+      const existing = tabStreams.get(details.tabId) || []
+      // Deduplicate by URL
+      if (!existing.some((c) => c.url === candidate.url)) {
+        existing.push(candidate)
+        tabStreams.set(details.tabId, existing)
+      }
+      chrome.tabs.sendMessage(details.tabId, {
+        action: 'mediaStreamsDetected',
+        candidates: tabStreams.get(details.tabId)
+      }).catch(() => {})
+    }
   },
   { urls: ['<all_urls>'] },
   ['responseHeaders']
 )
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  tabStreams.delete(tabId)
+})
+
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (message?.action === 'downloadStream' && message.candidate) {
+    const candidate = message.candidate
+    const body = {
+      url: candidate.url,
+      fileName: candidate.title || undefined
+    }
+    void (async () => {
+      let accepted = await sendViaNativeMessaging(body)
+      if (!accepted) accepted = await postJson(FLEXO_CAPTURE, body)
+      if (!accepted) void launchFlexo(body)
+    })()
+  }
+})
 
 chrome.action.onClicked.addListener((tab) => {
   if (!tab?.url || !DOWNLOAD_URL.test(tab.url)) return

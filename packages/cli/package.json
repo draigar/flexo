@@ -1,0 +1,26 @@
+{
+  "name": "flexo",
+  "version": "0.3.0",
+  "description": "Interactive CLI & launcher for Flexo download accelerator",
+  "bin": {
+    "flexo": "./bin/flexo.js"
+  },
+  "type": "module",
+  "main": "./src/index.js",
+  "files": [
+    "bin",
+    "src"
+  ],
+  "keywords": [
+    "download-manager",
+    "parallel-downloads",
+    "tauri",
+    "flexo",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

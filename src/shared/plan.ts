@@ -32,11 +32,16 @@ export function resolveAutoBlockBytes(kinds: readonly string[]): number {
   return DEFAULT_MAX_BLOCK_BYTES
 }
 
+import type { SegmentPreset } from './types'
+
 export function segmentPresetToBytes(
-  preset: 'auto' | '8' | '16' | '32' | '64' | undefined,
+  preset: SegmentPreset | undefined,
   kinds: readonly string[]
 ): number {
   if (!preset || preset === 'auto') return resolveAutoBlockBytes(kinds)
+  if (preset === 'aggressive') return 8 * MIB
+  if (preset === 'balanced') return 16 * MIB
+  if (preset === 'conservative') return 32 * MIB
   return Number(preset) * MIB
 }
 

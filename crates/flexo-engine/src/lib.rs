@@ -107,7 +107,15 @@ impl Engine {
     }
 
     pub async fn probe_url(&self, url: String) -> Result<ProbeResult> {
-        download::probe::probe_url(&url, None).await
+        download::probe::probe_url_with_headers(&url, None, None).await
+    }
+
+    pub async fn probe_url_with_headers(
+        &self,
+        url: &str,
+        headers: Option<&RequestHeaders>,
+    ) -> Result<ProbeResult> {
+        download::probe::probe_url_with_headers(url, headers, None).await
     }
 
     pub async fn start_download(&self, req: StartDownloadRequest) -> Result<String> {
@@ -123,6 +131,9 @@ impl Engine {
     }
     pub async fn resume(&self, id: String) -> Result<()> {
         self.manager.resume(&id).await
+    }
+    pub async fn relink(&self, id: String, new_url: String) -> Result<()> {
+        self.manager.relink(&id, &new_url).await
     }
     pub async fn cancel(&self, id: String) -> Result<()> {
         self.manager.cancel(Some(&id)).await

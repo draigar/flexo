@@ -1,29 +1,25 @@
 {
   "manifest_version": 3,
-  "name": "Flexo Capture",
-  "version": "0.2.1",
-  "description": "Send browser downloads to Flexo and let Flexo take them over.",
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwVT8ai9ikj/jiuBP4mCzTCD6YLg7FA6klshji/OdHvggqO/38RgwVk4vOonRCjE8YDcHr3fRToNJPMqORqEd66mIj2BYd5jBXK3jCoO8b1OeMQfHi7Eceo7kavVCyrnoDeAvhYFmYoNgX4llPzc5FRT1YNrbKIG+MDolZwq3jL9f+w8+RuEhsKkEtgGP+Zld86GzoxsIQhXdiBXQLxE9nsuqnbzlZ31jtE1TLvmafp6NWTPRLKoxPGjVWIrWFMlSdMAQt9zUcN6Qj5tawGSvbto69C41cCwInwjOjE6Htf5CLBU+/6jJf2179ne/FET0/+FTQq3cvsEtzFKhaCZ3SQIDAQAB",
-  "permissions": [
-    "downloads",
-    "nativeMessaging",
-    "storage",
-    "tabs",
-    "webRequest"
-  ],
-  "host_permissions": [
-    "http://127.0.0.1:17890/*",
-    "<all_urls>"
-  ],
-  "background": {
-    "service_worker": "background.js"
-  },
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "flexo-capture@flexo.app"
-    }
+  "name": "Download with Flexo",
+  "short_name": "Flexo",
+  "version": "1.0.0",
+  "description": "Send downloads from your browser to Flexo Download Manager.",
+  "homepage_url": "https://github.com/draigar/flexo",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
   },
   "action": {
-    "default_title": "Send to Flexo"
-  }
+    "default_title": "Flexo",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "permissions": ["alarms", "downloads", "contextMenus", "cookies", "storage", "tabs"],
+  "host_permissions": ["<all_urls>"]
 }

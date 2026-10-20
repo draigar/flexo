@@ -1,41 +1,28 @@
 import type { DownloadState } from '@shared/types'
+import { Folder } from 'lucide-react'
 import { useState } from 'react'
-import { ScreenFooter } from '../components/ScreenFooter'
+import { DetailHeader } from '../components/DetailHeader'
 import { TruncatedText } from '../components/TruncatedText'
-import { Button } from '../components/ui/button'
-import { describeError, fileExtensionBadge, formatBytes } from '../utils/format'
+import {
+  describeError,
+  fileExtensionBadge,
+  formatBytes,
+  formatPercent,
+  isFolder,
+  wantedBytes
+} from '../utils/format'
 
-export function ErrorScreen({
-  download,
-  onNewDownload,
-  onDownloadAgain
-}: {
-  download: DownloadState
-  onNewDownload: () => void
-  onDownloadAgain: () => void
-}): React.JSX.Element {
+export function ErrorScreen({ download }: { download: DownloadState }): React.JSX.Element {
   const [copied, setCopied] = useState(false)
-  const [resuming, setResuming] = useState(false)
   const cancelled = download.status === 'cancelled'
   const knownSize = download.totalBytes > 0
-  const percent = knownSize
-    ? Math.min(100, Math.round((download.bytesDownloaded / download.totalBytes) * 100))
-    : 0
-  const heading = cancelled ? 'Download Cancelled' : 'Download Failed'
+  const percent = knownSize ? formatPercent(download.bytesDownloaded, wantedBytes(download)) : 0
+  const heading = cancelled ? 'Download cancelled' : 'Download failed'
   const description = cancelled
     ? 'The download was stopped before finishing.'
     : download.error
       ? describeError(download.error)
-      : 'An error occurred during transfer.'
-
-  const handleResume = async (): Promise<void> => {
-    setResuming(true)
-    try {
-      await window.flexo.resumeDownload(download.id)
-    } catch {
-      setResuming(false)
-    }
-  }
+      : 'The download stopped unexpectedly. Try again.'
 
   const handleCopyUrl = async (): Promise<void> => {
     try {
@@ -49,8 +36,9 @@ export function ErrorScreen({
 
   return (
     <div className="flex h-full flex-col bg-background">
+      <DetailHeader download={download} />
       <div className="flex flex-1 flex-col items-center justify-center px-5 py-6">
-        <div className="flex w-full max-w-[440px] flex-col items-center gap-[18px] rounded-[14px] border-[0.5px] border-[var(--border-strong)] bg-card p-[28px_24px] text-center shadow-[0_16px_40px_rgba(0,0,0,0.45),0_2px_8px_rgba(0,0,0,0.2)]">
+        <div className="flex w-full max-w-[440px] flex-col items-center gap-[18px] rounded-xl border-[0.5px] border-border bg-card p-6 text-center">
           {/* Status Icon */}
           <div
             className={`flex size-12 shrink-0 items-center justify-center rounded-full border ${
@@ -116,7 +104,11 @@ export function ErrorScreen({
           {/* File capsule */}
           <div className="flex w-full items-center gap-[11px] rounded-[9px] border-[0.5px] border-border bg-background p-[10px_12px] text-left">
             <div className="flex size-[34px] shrink-0 items-center justify-center rounded-[7px] border-[0.5px] border-[var(--border-strong)] bg-card font-mono text-[8.5px] leading-none font-semibold text-[var(--text-secondary)]">
-              {fileExtensionBadge(download.fileName)}
+              {isFolder(download) ? (
+                <Folder aria-label="Folder" className="size-[15px]" />
+              ) : (
+                fileExtensionBadge(download.fileName)
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <TruncatedText
@@ -128,43 +120,32 @@ export function ErrorScreen({
                   <>
                     {formatBytes(download.bytesDownloaded)}
                     {knownSize
-                      ? ` of ${formatBytes(download.totalBytes)} (${percent}%)`
-                      : ' transferred'}
+                      ? ` of ${formatBytes(wantedBytes(download))} (${percent}%)`
+                      : ' downloaded'}
                   </>
                 ) : (
-                  'No data transferred'
+                  'No data downloaded'
                 )}
               </div>
             </div>
           </div>
 
-          {/* Action Buttons in Center */}
-          <div className="mt-1 flex w-full justify-center gap-2.5">
-            <Button type="button" onClick={handleResume} disabled={resuming}>
-              {resuming ? 'Resuming…' : 'Resume Download'}
-            </Button>
-            <Button type="button" variant="secondary" onClick={onNewDownload}>
-              New Download
-            </Button>
+          <div className="flex w-full min-w-0 items-center gap-2 border-t-[0.5px] border-border pt-3">
+            <div className="min-w-0 flex-1 text-left font-mono text-[11px] leading-none text-muted-foreground">
+              <TruncatedText text={download.url} />
+            </div>
+            <button
+              type="button"
+              onClick={handleCopyUrl}
+              className={`min-h-6 shrink-0 border-none bg-transparent px-1 py-0.5 font-mono text-[11px] leading-none ${
+                copied ? 'text-[var(--color-success)]' : 'text-primary'
+              }`}
+            >
+              {copied ? 'Copied' : 'Copy link'}
+            </button>
           </div>
         </div>
       </div>
-
-      {/* Footer with properly constrained, non-overflowing URL */}
-      <ScreenFooter className="min-w-0">
-        <div className="min-w-0 flex-1 font-mono text-[11px] leading-none text-muted-foreground">
-          <TruncatedText text={download.url} />
-        </div>
-        <button
-          type="button"
-          onClick={handleCopyUrl}
-          className={`min-h-6 shrink-0 border-none bg-transparent px-1 py-0.5 font-mono text-[11px] leading-none ${
-            copied ? 'text-[var(--color-success)]' : 'text-primary'
-          }`}
-        >
-          {copied ? 'Copied' : 'Copy URL'}
-        </button>
-      </ScreenFooter>
     </div>
   )
 }

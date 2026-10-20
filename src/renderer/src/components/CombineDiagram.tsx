@@ -1,4 +1,4 @@
-import { formatSpeed } from '../utils/format'
+import { useFormatSpeed } from '../hooks/useFormatSpeed'
 
 const ROW_HEIGHT = 36
 // Gaps between the label column and the rest of the diagram stay fixed — only the label
@@ -20,7 +20,12 @@ const LABEL_EDGE_PAD = 4
 export interface CombineDiagramNetwork {
   solid: string
   label: string
+  /** The network's current speed, shown beside its label. `undefined` or zero reads as "—". */
   speedBytesPerSec?: number
+  /** Whether the network is carrying bytes right now (an HTTP stream fetching, or a torrent peer
+   * receiving). Drives the flow animation; derived from connection status rather than speed, so
+   * the diagram agrees with the network rows. */
+  active?: boolean
 }
 
 /** Draws the multiple-links-into-one-stream diagram: individual networks with their
@@ -29,17 +34,13 @@ export interface CombineDiagramNetwork {
 export function CombineDiagram({
   networks,
   muted = false,
-  paused = false,
-  assembling = false
+  paused = false
 }: {
   networks: CombineDiagramNetwork[]
   muted?: boolean
   paused?: boolean
-  /** The part files are all complete and being stitched into the destination — the individual
-   * network feeds have nothing left to send, so their dashed lines stop while the combined
-   * stream pulses to show the reassembly step is still actively running rather than stalled. */
-  assembling?: boolean
 }): React.JSX.Element {
+  const formatSpeed = useFormatSpeed()
   const height = Math.max(78, networks.length * ROW_HEIGHT + 10)
   const midY = height / 2
 
@@ -64,20 +65,22 @@ export function CombineDiagram({
         {networks.map((network, index) => {
           const y = (index + 0.5) * (height / networks.length)
           const color = muted ? 'var(--icon-muted)' : network.solid
+          // Three deterministic states: paused (the whole download stopped), idle (the network
+          // is on but fetching nothing), or flowing (the network is carrying bytes). Muted is a
+          // static illustration — the empty-state diagram — so it never animates or dims.
+          const flowing = !muted && !paused && network.active === true
+          const opacity = muted ? 1 : paused ? 0.55 : flowing ? 1 : 0.35
           return (
             <path
               key={network.label + index}
               d={`M${CURVE_START_X},${y.toFixed(1)} C${CURVE_START_X + 36},${y.toFixed(1)} ${COMBINE_X - 26},${midY.toFixed(1)} ${COMBINE_X},${midY.toFixed(1)}`}
               stroke={color}
               strokeDasharray="6 8"
-              // Assembling means the network feeds themselves are done — nothing left in flight
-              // on these lines — so they go still like a paused download rather than pretending
-              // to still be streaming.
-              opacity={paused || assembling ? 0.55 : 1}
+              opacity={opacity}
               style={
-                muted || paused || assembling
-                  ? undefined
-                  : { animation: `flexo-dash ${1.1 + index * 0.2}s linear infinite` }
+                flowing
+                  ? { animation: `flexo-dash ${1.1 + index * 0.2}s linear infinite` }
+                  : undefined
               }
             />
           )
@@ -89,7 +92,6 @@ export function CombineDiagram({
           }
           strokeWidth={6.5}
           opacity={paused ? 0.6 : 1}
-          style={assembling ? { animation: 'flexo-glow 1s ease-in-out infinite' } : undefined}
         />
       </g>
       <polygon
@@ -156,7 +158,7 @@ export function CombineDiagram({
           </g>
         )
       })}
-      {!muted && !assembling && !paused && (
+      {!muted && !paused && (
         <text
           x={STREAM_END_X + 2}
           y={midY - 11}

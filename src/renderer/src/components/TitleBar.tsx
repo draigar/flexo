@@ -25,13 +25,16 @@ const pillDotClass = 'size-1.5 shrink-0 rounded-full'
 const navButtonClass =
   'flex size-[26px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-[0.5px] [-webkit-app-region:no-drag]'
 
-export function TitleBar({ status }: { status: TitleBarStatus }): React.JSX.Element {
-  const dimmed = status.kind === 'offline'
+export function TitleBar({ status }: { status?: TitleBarStatus } = {}): React.JSX.Element {
+  const currentStatus = status ?? { kind: 'none' }
+  const dimmed = currentStatus.kind === 'offline'
   const page = useAppStore((store) => store.page)
   const setPage = useAppStore((store) => store.setPage)
+  const setView = useAppStore((store) => store.setView)
   const activeDownloads = useAppStore((store) => store.activeDownloads)
   const focusedDownloadId = useAppStore((store) => store.focusedDownloadId)
   const setFocusedDownloadId = useAppStore((store) => store.setFocusedDownloadId)
+  const openNewDownload = useAppStore((store) => store.openNewDownload)
 
   const ongoingCount = Object.values(activeDownloads).filter(
     (d) =>
@@ -48,24 +51,31 @@ export function TitleBar({ status }: { status: TitleBarStatus }): React.JSX.Elem
     >
       {isMac && <WindowControls />}
 
-      <img
-        src="/icon.png"
-        alt=""
-        data-tauri-drag-region
-        className="size-[18px] shrink-0 rounded-[5px] [-webkit-app-region:drag]"
-      />
-      <div
-        data-tauri-drag-region
-        className={`font-sans text-[13px] leading-none font-bold tracking-[-0.02em] ${
-          dimmed ? 'text-muted-foreground' : 'text-foreground'
-        }`}
+      <button
+        type="button"
+        onClick={() => {
+          setView({ name: 'list' })
+          setPage('home')
+        }}
+        className="flex items-center gap-2 cursor-pointer outline-none hover:opacity-80 transition-opacity [-webkit-app-region:no-drag]"
       >
-        Flexo
-      </div>
+        <img
+          src="/icon.png"
+          alt=""
+          className="size-[18px] shrink-0 rounded-[5px]"
+        />
+        <div
+          className={`font-sans text-[13px] leading-none font-bold tracking-[-0.02em] ${
+            dimmed ? 'text-muted-foreground' : 'text-foreground'
+          }`}
+        >
+          Flexo
+        </div>
+      </button>
 
       <div data-tauri-drag-region className="flex-1" />
 
-      {status.kind === 'combined' && (
+      {currentStatus.kind === 'combined' && (
         <ColorBadge
           bg="var(--color-wifi-bg)"
           border="var(--color-wifi-border)"
@@ -75,10 +85,10 @@ export function TitleBar({ status }: { status: TitleBarStatus }): React.JSX.Elem
           <div
             className={`${pillDotClass} bg-(--color-wifi) animate-[flexo-glow_2s_ease-in-out_infinite]`}
           />
-          {status.networkCount} {status.networkCount === 1 ? 'network' : 'networks'} combined
+          {currentStatus.networkCount} {currentStatus.networkCount === 1 ? 'network' : 'networks'} combined
         </ColorBadge>
       )}
-      {status.kind === 'assembling' && (
+      {currentStatus.kind === 'assembling' && (
         <ColorBadge
           bg="var(--color-ethernet-bg)"
           border="var(--color-ethernet-border)"
@@ -91,7 +101,7 @@ export function TitleBar({ status }: { status: TitleBarStatus }): React.JSX.Elem
           Assembling file…
         </ColorBadge>
       )}
-      {status.kind === 'paused' && (
+      {currentStatus.kind === 'paused' && (
         <ColorBadge
           bg="var(--color-usb-bg)"
           border="var(--color-usb-border)"
@@ -99,10 +109,10 @@ export function TitleBar({ status }: { status: TitleBarStatus }): React.JSX.Elem
           className={`${pillClass} [-webkit-app-region:no-drag]`}
         >
           <div className={`${pillDotClass} bg-(--color-usb)`} />
-          {status.networkCount} {status.networkCount === 1 ? 'network' : 'networks'} · Paused
+          {currentStatus.networkCount} {currentStatus.networkCount === 1 ? 'network' : 'networks'} · Paused
         </ColorBadge>
       )}
-      {status.kind === 'offline' && (
+      {currentStatus.kind === 'offline' && (
         <ColorBadge
           bg="var(--color-danger-bg)"
           border="var(--color-danger-border)"
@@ -114,21 +124,18 @@ export function TitleBar({ status }: { status: TitleBarStatus }): React.JSX.Elem
         </ColorBadge>
       )}
 
-      {(ongoingCount > 0 || focusedDownloadId !== null || page === 'ongoing') && (
-        <button
-          type="button"
-          title="New Download"
-          aria-label="New Download"
-          onClick={() => {
-            setFocusedDownloadId(null)
-            useAppStore.getState().setDraftUrl('')
-            setPage('home')
-          }}
-          className={`${navButtonClass} border-border bg-secondary text-[var(--text-secondary)] hover:text-foreground hover:border-primary/50 transition-colors`}
-        >
-          <Plus size={14} />
-        </button>
-      )}
+      <button
+        type="button"
+        title="New Download"
+        aria-label="New Download"
+        onClick={() => {
+          setPage('home')
+          openNewDownload()
+        }}
+        className={`${navButtonClass} border-border bg-secondary text-[var(--text-secondary)] hover:text-foreground hover:border-primary/50 transition-colors`}
+      >
+        <Plus size={14} />
+      </button>
 
       {ongoingCount > 0 && (
         <button
@@ -136,7 +143,10 @@ export function TitleBar({ status }: { status: TitleBarStatus }): React.JSX.Elem
           title="Ongoing Downloads"
           aria-label="Ongoing Downloads"
           aria-pressed={page === 'ongoing'}
-          onClick={() => setPage(page === 'ongoing' ? 'home' : 'ongoing')}
+          onClick={() => {
+            setView({ name: 'list' })
+            setPage(page === 'ongoing' ? 'home' : 'ongoing')
+          }}
           className={`relative ${navButtonClass} ${
             page === 'ongoing'
               ? 'border-primary bg-primary text-primary-foreground'
@@ -152,9 +162,13 @@ export function TitleBar({ status }: { status: TitleBarStatus }): React.JSX.Elem
 
       <button
         type="button"
+        title="Downloads Library"
         aria-label="Downloads"
         aria-pressed={page === 'library'}
-        onClick={() => setPage(page === 'library' ? 'home' : 'library')}
+        onClick={() => {
+          setView({ name: 'list' })
+          setPage(page === 'library' ? 'home' : 'library')
+        }}
         className={`${navButtonClass} ${
           page === 'library'
             ? 'border-primary bg-primary text-primary-foreground'
@@ -165,9 +179,13 @@ export function TitleBar({ status }: { status: TitleBarStatus }): React.JSX.Elem
       </button>
       <button
         type="button"
+        title="Settings"
         aria-label="Settings"
         aria-pressed={page === 'settings'}
-        onClick={() => setPage(page === 'settings' ? 'home' : 'settings')}
+        onClick={() => {
+          setView({ name: 'list' })
+          setPage(page === 'settings' ? 'home' : 'settings')
+        }}
         className={`${navButtonClass} ${
           page === 'settings'
             ? 'border-primary bg-primary text-primary-foreground'

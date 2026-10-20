@@ -21,7 +21,7 @@ export interface NetworkInterfaceInfo {
   mac?: string
 }
 
-export interface ProbeResult {
+interface ProbeResultBase {
   requestedUrl: string
   /** URL after following redirects — this is what the download should actually fetch. */
   finalUrl: string
@@ -35,211 +35,365 @@ export interface ProbeResult {
   lastModified: string | null
 }
 
+export interface HttpProbeResult extends ProbeResultBase {
+  kind: 'http'
+}
+
+export interface TorrentProbeResult extends ProbeResultBase {
+  kind: 'torrent'
+  torrent: TorrentInfo
+}
+
+export type ProbeResult = HttpProbeResult | TorrentProbeResult
+
+export interface TorrentInfo {
+  infoHash: string
+  pieceLength: number
+  /** Where each file will be written, relative to the destination folder. */
+  files: { path: string; length: number }[]
+}
+
+/** One of a torrent download's files, for listing them while it runs. */
+export interface TorrentFileEntry {
+  /** Relative to the destination folder. */
+  path: string
+  length: number
+  /** Chosen to be downloaded. */
+  chosen: boolean
+}
+
+/** `queued`: waiting for one of the downloads running at once to end. */
 export type DownloadStatus =
-  'downloading' | 'assembling' | 'paused' | 'completed' | 'error' | 'cancelled'
+  | 'queued'
+  | 'downloading'
+  | 'assembling'
+  | 'paused'
+  | 'completed'
+  | 'error'
+  | 'cancelled'
 
-/** A stream's state. `pending` means it is waiting for work: it holds no block, either because
- * none is free for it right now or because it hasn't started. `downloading` always means it is
- * fetching one (`currentBlockIndex` says which). */
-export type ChunkStatus =
-  'pending' | 'downloading' | 'retrying' | 'paused' | 'completed' | 'error' | 'cancelled'
+export type HttpStreamStatus =
+  | 'pending'
+  | 'downloading'
+  | 'retrying'
+  | 'paused'
+  | 'completed'
+  | 'cancelled'
 
-export interface ChunkState {
+/** Backward compatibility alias for ChunkStatus */
+export type ChunkStatus = HttpStreamStatus
+
+/** One connection to the server, through one network. */
+export interface HttpStreamState {
   id: number
   interfaceId: string
-  interfaceLabel: string
-  interfaceKind: NetworkInterfaceKind
   rangeStart: number
-  /** null means an open-ended range (download to end of file). */
   rangeEnd: number | null
   bytesDownloaded: number
   speedBytesPerSec: number
-  status: ChunkStatus
-  error?: string
-  /** Number of times this chunk's connection has been retried after a dropped/failed attempt. */
-  retryCount: number
-  /** The block this stream is fetching. Unset whenever it holds none (idle, retrying, paused, done). */
+  status: HttpStreamStatus
   currentBlockIndex?: number
-  /** True while this stream is racing another stream for `currentBlockIndex`, because that one
-   * was too slow — see main/download/scheduler.ts. Whichever finishes first wins. */
   hedge?: boolean
+  error?: string
+  retryCount?: number
 }
 
-export type BlockStatus = 'pending' | 'downloading' | 'completed' | 'error'
+/** Compatibility alias for ChunkState */
+export type ChunkState = HttpStreamState
 
-export interface BlockState {
+export interface TorrentPeerState {
+  id: number
+  interfaceId: string
+  status: 'connected' | 'receiving'
+  client: string | null
+  bytesDownloaded: number
+  speedBytesPerSec: number
+  bytesUploaded: number
+  uploadSpeedBytesPerSec: number
+}
+
+export type HttpBlockStatus = 'pending' | 'downloading' | 'completed' | 'error'
+export type TorrentPieceStatus = HttpBlockStatus | 'skipped'
+export type BlockStatus = HttpBlockStatus
+
+interface WorkUnitState {
   index: number
   rangeStart: number
   rangeEnd: number | null
-  status: BlockStatus
-  /** The network currently leasing this block (or the last one to touch it). Only meaningful
-   * as "who is working on it now" — for who actually *delivered* the bytes, read
-   * `bytesByInterface`, since a block can be started on one network and finished on another
-   * after a retry or a pause/resume. */
   interfaceId?: string
   bytesDownloaded: number
-  /** Bytes of this block delivered by each network, keyed by interface id. Summing to
-   * `bytesDownloaded`, this is what the block grid colors by, so a block split across
-   * networks is attributed to all of them instead of only the one that happened to finish it. */
   bytesByInterface: Record<string, number>
 }
 
-export interface DownloadState {
+export interface HttpBlockState extends WorkUnitState {
+  status: HttpBlockStatus
+}
+
+export interface TorrentPieceState extends WorkUnitState {
+  status: TorrentPieceStatus
+}
+
+export type BlockState = HttpBlockState
+
+export type NetworkStatus = 'on' | 'off' | 'offline' | 'unreachable' | 'failed' | 'limit'
+
+interface DownloadNetworkBase {
+  id: string
+  label: string
+  kind: NetworkInterfaceKind
+  enabled: boolean
+  status: NetworkStatus
+  error?: string
+  bytesDownloaded: number
+  speedBytesPerSec: number
+  retries: number
+}
+
+export interface HttpDownloadNetwork extends DownloadNetworkBase {
+  transfer: 'http'
+}
+
+export interface TorrentDownloadNetwork extends DownloadNetworkBase {
+  transfer: 'torrent'
+  bytesUploaded: number
+  uploadSpeedBytesPerSec: number
+}
+
+export type DownloadNetwork = HttpDownloadNetwork | TorrentDownloadNetwork
+
+export interface BaseDownloadState {
   id: string
   url: string
   fileName: string
   destinationPath: string
-  /** 0 means the size could not be determined ahead of time. */
+  finalUrl?: string
   totalBytes: number
   bytesDownloaded: number
   speedBytesPerSec: number
+  timeLeftSeconds?: number
   status: DownloadStatus
-  chunks: ChunkState[]
-  blocks?: BlockState[]
-  totalBlocks?: number
-  blockSizeBytes?: number
   error?: string
+  resumable?: boolean
   startedAt: number
+  scheduled?: boolean
+  queuedAt?: number
   pausedAt?: number
   totalPausedMs?: number
   completedAt?: number
-  /** Bytes written to the destination file so far while `status` is 'assembling' — the part
-   * files are already all complete at that point, so this tracks the sequential reassembly step
-   * rather than the network transfer. */
+  speedHistory?: Record<string, number[]> | number[]
+  peakSpeedBytesPerSec?: number
+  seq?: number
   assembledBytes?: number
+  streamsPerNetwork?: number
 }
 
-/** User customization for one physical network, keyed by NetworkInterfaceInfo.id — lets a
- * cryptic OS device name (e.g. "feth0") get a real label, and a color distinct from its
- * kind's default. Persisted in the main process, independent of any single download. */
+export interface HttpDownloadState extends BaseDownloadState {
+  kind: 'http'
+  networks: HttpDownloadNetwork[]
+  streams: HttpStreamState[]
+  peakStreams: number
+  chunks: HttpStreamState[]
+  blocks: HttpBlockState[]
+  totalBlocks: number
+  blockSizeBytes: number
+  supportsRanges?: boolean
+  diskLimited?: boolean
+  fromBrowser?: string
+  speedHistory?: Record<string, number[]>
+}
+
+export interface TorrentDownloadState extends BaseDownloadState {
+  kind: 'torrent'
+  networks: TorrentDownloadNetwork[]
+  peers: TorrentPeerState[]
+  peakPeers: number
+  pieces: TorrentPieceState[]
+  totalPieces: number
+  pieceLength: number
+  files: { chosen: number; total: number; selected?: number[] }
+  folder: boolean
+  skippedBytes: number
+  bytesUploaded: number
+  uploadSpeedBytesPerSec: number
+  infoHash: string
+  speedHistory?: Record<string, number[]>
+}
+
+export type DownloadState = HttpDownloadState | TorrentDownloadState
+
+export type FinishedDownload = (
+  | Omit<HttpDownloadState, 'blocks' | 'streams' | 'chunks'>
+  | Omit<TorrentDownloadState, 'pieces' | 'peers'>
+) & {
+  unitsWritten: number
+  missing?: boolean
+  downloadedFiles?: string[]
+}
+
+export type HttpDownloadUpdate = {
+  seq: number
+  state: HttpDownloadState
+  blocks: HttpBlockState[]
+}
+
+export type TorrentDownloadUpdate = {
+  seq: number
+  state: TorrentDownloadState
+  pieces: TorrentPieceState[]
+}
+
+export type DownloadUpdate = HttpDownloadUpdate | TorrentDownloadUpdate
+
+export type DataLimitPeriod = 'day' | 'week' | 'month'
+
 export interface NetworkPreference {
+  displayName?: string
   customName?: string
-  /** One of the app's curated swatch ids (see NETWORK_COLOR_SWATCHES) — not a raw hex, so every
-   * swatch is guaranteed to have a legible on-solid text color already picked out for it. */
+  name?: string
+  color?: string
   colorId?: string
+  off?: boolean
+  speedLimit?: number
+  dataLimit?: number
+  dataLimitPeriod?: DataLimitPeriod
 }
 
 export type NetworkPreferences = Record<string, NetworkPreference>
 
-/** One fake network in a dev-tool "virtual download" — see SimulatedNetworkConfig callers in
- * main/download/simDownload.ts. Lets a developer exercise the multi-network UI (the block grid,
- * per-network speed/throughput, retries, errors, assembling) against a file already on disk,
- * without needing a real flaky connection or a slow remote server to test against. */
-export interface SimulatedNetworkConfig {
-  kind: NetworkInterfaceKind
-  label: string
-  /** Target sustained throughput for this simulated network, in bytes/sec. */
-  speedBytesPerSec: number
-  /** 0-100 chance a chunk attempt on this network fails outright, simulating a dropped
-   * connection — set above 0 to exercise the retry/error UI on demand. */
-  faultRatePercent: number
-}
-
-export interface StartSimulatedDownloadRequest {
-  /** Absolute path to a file already on disk — this is what gets "downloaded". */
-  sourceFilePath: string
-  destinationDir: string
-  networks: SimulatedNetworkConfig[]
-  chunkCount: number
-  connectionsPerNetwork?: number
-  /** Throttles the reassembly step to this many bytes/sec, so the 'assembling' phase's UI (the
-   * block grid sweep, the combine diagram) stays visible long enough to watch even on a small
-   * file that would otherwise reassemble in a single tick. Omitted or 0 assembles at full disk
-   * speed, same as a real download. */
-  assembleSpeedBytesPerSec?: number
+export interface UpdateState {
+  status: 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error'
+  autoUpdate: boolean
+  version?: string
+  percent?: number
 }
 
 export interface UpdateInfo {
   version: string
-  /** Where clicking the notification should take the user — the landing page's downloads. */
   url: string
-  /** True once the user has dismissed the banner for this exact version (persisted, so it stays
-   * dismissed across relaunches) — the app then falls back to a quiet titlebar icon instead. */
   dismissed: boolean
 }
 
-/** What app-settings.json holds, and what the renderer sends to change it (merged over the saved
- * values, `undefined` clearing one). A missing field was never set. */
-/** Segment size preset. `auto` picks 32 MB for similar networks and 8 MB for mixed kinds. */
-export type SegmentPreset = 'auto' | '8' | '16' | '32' | '64'
+export interface DownloadSchedule {
+  enabled: boolean
+  startMinute: number
+  endMinute: number
+  days: number[]
+  endDate?: string
+}
+
+export type SpeedUnit = 'bytes' | 'bits'
+
+export const DOWNLOADS_AT_ONCE = { default: 2, min: 1, max: 4 }
+export const SPEED_HISTORY_SECONDS = 60
+export const DEFAULT_SLOW_MODE_SPEED = 2 * 1024 ** 2
 
 export interface AppSettings {
+  downloadSchedule?: DownloadSchedule
   themeSource?: ThemeSource
-  dismissedUpdateVersion?: string
-  streamsPerNetwork?: number
-  /** The last destination folder picked. */
+  autoUpdate?: boolean
   destinationDir?: string
-  /** User customizations (name/color) per network interface id. */
   networkPreferences?: NetworkPreferences
-  /** Max block size preset for new downloads. */
+  downloadsAtOnce?: number
+  speedLimit?: number
+  slowMode?: boolean
+  slowModeSpeed?: number
+  speedUnit?: SpeedUnit
+  browserExtensionUsed?: boolean
+  streamsPerNetwork?: number
   segmentPreset?: SegmentPreset
-  /** Start a captured browser or deep-link file immediately. */
   autoDownload?: boolean
-  /** Offer a copied http(s) or magnet link in the link field. */
   watchClipboard?: boolean
-  /** Maximum concurrent active downloads (defaults to 6, up to 100). */
   maxConcurrentDownloads?: number
+  dismissedUpdateVersion?: string
 }
 
-/** Everything the renderer needs for its first paint, read synchronously by the preload so no
- * saved value flashes in over a default a moment after launch. */
 export interface InitialState {
+  downloadSchedule?: DownloadSchedule
   homeDir: string
   downloadsDir: string
-  /** True while running under Vite in development — gates the dev tools panel. */
-  isDev: boolean
+  isDev?: boolean
   themeSource: ThemeSource
   networkPreferences: NetworkPreferences
-  streamsPerNetwork?: number
-  /** The last folder picked, if it still exists — otherwise the renderer uses downloadsDir. */
+  downloadsAtOnce: number
+  speedLimit?: number
+  slowMode: boolean
+  slowModeSpeed: number
+  speedUnit: SpeedUnit
   destinationDir?: string
+  streamsPerNetwork?: number
   segmentPreset?: SegmentPreset
-  autoDownload: boolean
-  watchClipboard: boolean
+  autoDownload?: boolean
+  watchClipboard?: boolean
   maxConcurrentDownloads?: number
 }
 
-export interface DownloadRecord {
-  id: string
-  url: string
-  fileName: string
-  destinationPath: string
-  totalBytes: number
-  startedAt: number
-  completedAt: number
-}
-
-export interface StartDownloadRequest {
+interface StartDownloadRequestBase {
   url: string
   destinationDir: string
   suggestedFileName: string
-  /** 0 means unknown. */
   totalBytes: number
   supportsRanges: boolean
   interfaceIds: string[]
-  /** Total chunks to split the download into across interfaceIds. */
-  chunkCount: number
-  /** Number of parallel connections allocated per physical network. */
-  connectionsPerNetwork?: number
   etag: string | null
   lastModified: string | null
-  /** Alternate URLs that serve the same bytes. */
-  mirrorUrls?: string[]
-  /** Overrides the planner's max block size for this download. */
-  maxBlockBytes?: number
 }
 
-export type QueueItemStatus = 'waiting' | 'ready'
+export interface StartHttpDownloadRequest extends StartDownloadRequestBase {
+  kind: 'http'
+  streamsPerNetwork?: number
+  chunkCount?: number
+  connectionsPerNetwork?: number
+  maxBlockBytes?: number
+  mirrorUrls?: string[]
+  browser?: BrowserContext
+  referer?: string
+  cookies?: string
+  userAgent?: string
+}
 
-export interface QueueItem {
+export type ProbeUrlPayload =
+  | string
+  | {
+      url: string
+      referer?: string
+      cookies?: string
+      userAgent?: string
+    }
+
+export interface BrowserCookie {
+  name: string
+  value: string
+  domain: string
+  hostOnly: boolean
+  path: string
+  secure: boolean
+}
+
+export interface BrowserContext {
+  cookies: BrowserCookie[]
+  referer?: string
+  userAgent?: string
+  name?: string
+}
+
+export interface PendingLink {
   id: string
   url: string
-  fileName: string
-  status: QueueItemStatus
-  addedAt: number
-  request: StartDownloadRequest
+  probe?: ProbeResult
+  from?: string
+  signedInTo?: string
+  resumes?: { id: string; fileName: string }
 }
 
+export interface StartTorrentDownloadRequest extends StartDownloadRequestBase {
+  kind: 'torrent'
+  infoHash: string
+  selectedFiles?: number[]
+}
+
+export type StartDownloadRequest = StartHttpDownloadRequest | StartTorrentDownloadRequest
+
+/* Flexo media & speed probe types */
 export type MediaKind = 'progressive' | 'hls' | 'dash' | 'page'
 
 export interface MediaCandidate {
@@ -250,7 +404,6 @@ export interface MediaCandidate {
   quality?: string
   mimeType?: string
   totalBytes?: number | null
-  /** True when a DRM system is required — Flexo will not download these. */
   drm: boolean
   unsupportedReason?: string
 }
@@ -273,4 +426,57 @@ export interface NetworkSpeedSnapshot {
   totalDownloadBytesPerSec: number
   totalUploadBytesPerSec: number
   timestampMs: number
+}
+
+export interface SimulatedNetworkConfig {
+  id?: string
+  name?: string
+  kind: NetworkInterfaceKind
+  label?: string
+  speedLimitBytesPerSec?: number
+  speedBytesPerSec?: number
+  latencyMs?: number
+  packetLossPercent?: number
+  faultRatePercent?: number
+}
+
+export interface StartSimulatedDownloadRequest {
+  sourceFilePath: string
+  destinationDir: string
+  fileName?: string
+  networks?: SimulatedNetworkConfig[]
+  chunkCount?: number
+  connectionsPerNetwork?: number
+  assembleSpeedBytesPerSec?: number
+}
+
+export interface DownloadRecord {
+  id: string
+  url: string
+  fileName: string
+  destinationPath: string
+  totalBytes: number
+  startedAt: number
+  completedAt: number
+}
+
+export type SegmentPreset =
+  | 'aggressive'
+  | 'balanced'
+  | 'conservative'
+  | 'auto'
+  | '8'
+  | '16'
+  | '32'
+  | '64'
+
+export type QueueItemStatus = 'waiting' | 'ready'
+
+export interface QueueItem {
+  id: string
+  url: string
+  fileName: string
+  status: QueueItemStatus
+  addedAt: number
+  request: StartDownloadRequest
 }

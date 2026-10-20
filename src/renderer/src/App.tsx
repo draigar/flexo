@@ -1,18 +1,21 @@
-import type { DownloadState } from '@shared/types'
+import type { DownloadState, FinishedDownload } from '@shared/types'
 import { useEffect } from 'react'
-import { DevToolsPanel } from './components/DevToolsPanel'
-import { TitleBar, type TitleBarStatus } from './components/TitleBar'
+import { DownloadActionsProvider } from './components/DownloadActionsProvider'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { NetworkBindingDialog } from './components/NetworkBindingDialog'
+import { NewDownloadDialog } from './components/NewDownloadDialog'
+import { StatusBar } from './components/StatusBar'
+import { TitleBar } from './components/TitleBar'
 import { UpdateDialog } from './components/UpdateDialog'
-import { Alert, AlertDescription } from './components/ui/alert'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useDownloadEvents } from './hooks/useDownloadEvents'
+import { useNetworkEvents } from './hooks/useNetworks'
+import { useNewDownloadShortcuts, useOpenedLinks } from './hooks/useOpenedLinks'
 import { CompleteScreen } from './screens/CompleteScreen'
 import { DownloadingScreen } from './screens/DownloadingScreen'
+import { DownloadsScreen } from './screens/DownloadsScreen'
 import { ErrorScreen } from './screens/ErrorScreen'
-import { IdleScreen } from './screens/IdleScreen'
 import { LibraryScreen } from './screens/LibraryScreen'
-import { NoConnectionsScreen } from './screens/NoConnectionsScreen'
 import { OngoingDownloadsScreen } from './screens/OngoingDownloadsScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { useAppStore } from './store/useAppStore'
@@ -22,70 +25,54 @@ function assertNever(status: never): never {
   throw new Error(`Unhandled download status: ${String(status)}`)
 }
 
-/** One screen + title-bar status per download.status — a switch with an assertNever default so
- * a new DownloadStatus value is a compile error here instead of silently falling into whichever
- * branch happened to be last. */
-function renderDownload(
-  download: DownloadState,
-  handlers: { onNewDownload: () => void; onDownloadAgain: () => void }
-): { screen: React.JSX.Element; titleBarStatus: TitleBarStatus } {
+function renderDownload(download: DownloadState | FinishedDownload): React.JSX.Element {
+  if ('unitsWritten' in download) return <CompleteScreen download={download} />
   switch (download.status) {
+    case 'queued':
     case 'downloading':
-      return {
-        screen: <DownloadingScreen download={download} />,
-        titleBarStatus: {
-          kind: 'combined',
-          networkCount: new Set(download.chunks.map((chunk) => chunk.interfaceId)).size
-        }
-      }
     case 'paused':
-      return {
-        screen: <DownloadingScreen download={download} />,
-        titleBarStatus: {
-          kind: 'paused',
-          networkCount: new Set(download.chunks.map((chunk) => chunk.interfaceId)).size
-        }
-      }
     case 'assembling':
-      return {
-        screen: <DownloadingScreen download={download} />,
-        titleBarStatus: { kind: 'assembling' }
-      }
+      return <DownloadingScreen download={download} />
     case 'completed':
-      return {
-        screen: <CompleteScreen download={download} onNewDownload={handlers.onNewDownload} />,
-        titleBarStatus: { kind: 'none' }
-      }
+      return <CompleteScreen download={download} />
     case 'error':
     case 'cancelled':
-      return {
-        screen: (
-          <ErrorScreen
-            download={download}
-            onNewDownload={handlers.onNewDownload}
-            onDownloadAgain={handlers.onDownloadAgain}
-          />
-        ),
-        titleBarStatus: { kind: 'none' }
-      }
+      return <ErrorScreen download={download} />
     default:
-      return assertNever(download.status)
+      return assertNever(download.status as never)
   }
+}
+
+function CurrentScreen(): React.JSX.Element {
+  const page = useAppStore((store) => store.page)
+  const shown = useAppStore((store) => {
+    const { view } = store
+    if (view.name !== 'download') return null
+    return store.downloads[view.id] ?? store.history.find((entry) => entry.id === view.id) ?? null
+  })
+
+  if (page === 'settings') {
+    return <SettingsScreen />
+  }
+  if (page === 'library') {
+    return <LibraryScreen />
+  }
+  if (page === 'ongoing') {
+    return <OngoingDownloadsScreen />
+  }
+
+  const cancelled = shown && !('unitsWritten' in shown) && shown.status === 'cancelled'
+  return shown && !cancelled ? renderDownload(shown) : <DownloadsScreen />
 }
 
 function App(): React.JSX.Element {
   useDownloadEvents()
+  useOpenedLinks()
+  useNewDownloadShortcuts()
+  useNetworkEvents()
 
-  const interfaces = useAppStore((store) => store.interfaces)
-  const interfacesStatus = useAppStore((store) => store.interfacesStatus)
-  const activeDownloads = useAppStore((store) => store.activeDownloads)
-  const focusedDownloadId = useAppStore((store) => store.focusedDownloadId)
-  const setFocusedDownloadId = useAppStore((store) => store.setFocusedDownloadId)
-  const currentDownload = useAppStore((store) => store.currentDownload)
-  const checkForUpdate = useAppStore((store) => store.checkForUpdate)
   const themeSource = useAppStore((store) => store.themeSource)
-  const captureError = useAppStore((store) => store.captureError)
-  const page = useAppStore((store) => store.page)
+  const checkForUpdate = useAppStore((store) => store.checkForUpdate)
 
   useEffect(() => {
     document.documentElement.dataset.concept = ACTIVE_CONCEPT
@@ -93,85 +80,25 @@ function App(): React.JSX.Element {
   }, [themeSource])
 
   useEffect(() => {
-    checkForUpdate()
+    void checkForUpdate()
   }, [checkForUpdate])
-
-  const handleNewDownload = (): void => {
-    if (focusedDownloadId) {
-      const active = activeDownloads[focusedDownloadId]
-      if (active?.status === 'completed') {
-        useAppStore.getState().removeActiveDownload(focusedDownloadId)
-      } else {
-        void window.flexo.removeDownload(focusedDownloadId)
-        useAppStore.getState().removeActiveDownload(focusedDownloadId)
-      }
-    }
-    setFocusedDownloadId(null)
-    useAppStore.getState().setDraftUrl('')
-    useAppStore.getState().setPage('home')
-  }
-
-  const handleDownloadAgain = (): void => {
-    if (focusedDownloadId) {
-      const active = activeDownloads[focusedDownloadId]
-      if (active) {
-        const url = active.url
-        void window.flexo.removeDownload(active.id)
-        useAppStore.getState().removeActiveDownload(active.id)
-        setFocusedDownloadId(null)
-        useAppStore.getState().setPage('home')
-        useAppStore.getState().setDraftUrl(url)
-      }
-    }
-  }
-
-  const focusedDownload = focusedDownloadId
-    ? (activeDownloads[focusedDownloadId] ?? currentDownload)
-    : null
-
-  const noConnections = interfacesStatus === 'ready' && interfaces.length === 0
-
-  const downloadView = focusedDownload
-    ? renderDownload(focusedDownload, {
-        onNewDownload: handleNewDownload,
-        onDownloadAgain: handleDownloadAgain
-      })
-    : null
-
-  let screen: React.JSX.Element
-  let titleBarStatus: TitleBarStatus = downloadView?.titleBarStatus ?? { kind: 'none' }
-
-  if (page === 'settings') {
-    screen = <SettingsScreen />
-  } else if (page === 'library') {
-    screen = <LibraryScreen />
-  } else if (page === 'ongoing') {
-    screen = <OngoingDownloadsScreen />
-  } else if (downloadView) {
-    screen = downloadView.screen
-  } else if (noConnections) {
-    screen = <NoConnectionsScreen />
-    titleBarStatus = { kind: 'offline' }
-  } else {
-    screen = <IdleScreen />
-  }
 
   return (
     <TooltipProvider>
-      <div className="flex h-full flex-col">
-        <TitleBar status={titleBarStatus} />
-        {captureError && !currentDownload && (
-          <div className="px-5 pt-3">
-            <Alert variant="destructive" className="py-1.5">
-              <AlertDescription>{captureError}</AlertDescription>
-            </Alert>
+      <DownloadActionsProvider>
+        <div className="flex h-full flex-col bg-background text-foreground">
+          <TitleBar />
+          <div className="min-h-0 flex-1">
+            <ErrorBoundary>
+              <CurrentScreen />
+            </ErrorBoundary>
           </div>
-        )}
-        <div className="min-h-0 flex-1">{screen}</div>
-        <DevToolsPanel />
-        <UpdateDialog />
-        <NetworkBindingDialog />
-      </div>
+          <StatusBar />
+          <NewDownloadDialog />
+          <NetworkBindingDialog />
+          <UpdateDialog />
+        </div>
+      </DownloadActionsProvider>
     </TooltipProvider>
   )
 }
