@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import readline from 'node:readline';
 
 const FLEXO_DIR = path.join(os.homedir(), '.flexo');
@@ -22,6 +22,32 @@ export function findInstalledBinary() {
     const userApp = path.join(os.homedir(), 'Applications/Flexo.app/Contents/MacOS/Flexo');
     if (fs.existsSync(systemApp)) return systemApp;
     if (fs.existsSync(userApp)) return userApp;
+  }
+
+  if (platform === 'linux') {
+    // 1. Check system PATH for package installations (/usr/bin/flexo, /usr/local/bin/flexo)
+    const candidates = [
+      'flexo',
+      'Flexo',
+      '/usr/bin/flexo',
+      '/usr/local/bin/flexo',
+      '/opt/Flexo/flexo',
+      path.join(os.homedir(), '.local/bin/flexo'),
+      path.join(os.homedir(), 'Applications/Flexo.AppImage')
+    ];
+
+    for (const candidate of candidates) {
+      if (candidate.startsWith('/')) {
+        if (fs.existsSync(candidate)) return candidate;
+      } else {
+        try {
+          const resolved = execSync(`which ${candidate} 2>/dev/null`, { encoding: 'utf8' }).trim();
+          if (resolved && fs.existsSync(resolved)) return resolved;
+        } catch {
+          // ignore which failure
+        }
+      }
+    }
   }
 
   // Check ~/.flexo/bin/Flexo or Flexo.exe
