@@ -1,6 +1,6 @@
 {
   "name": "flexo",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Interactive CLI & launcher for Flexo download accelerator",
   "bin": {
     "flexo": "./bin/flexo.js"
